@@ -609,8 +609,11 @@ app.post('/api/admin/post-as', authMiddleware, adminOnly, upload.single('image')
   const asUsername = (req.body.asUsername || '').trim();
   if (!asUsername) return res.status(400).json({ error: 'asUsername required' });
 
-  const targetUser = db.prepare('SELECT username FROM users WHERE username = ? COLLATE NOCASE').get(asUsername);
-  if (!targetUser) return res.status(404).json({ error: 'User not found' });
+  let targetUser = db.prepare('SELECT username FROM users WHERE username = ? COLLATE NOCASE').get(asUsername);
+  if (!targetUser) {
+    db.prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)').run(asUsername, '!admin-created!', Date.now());
+    targetUser = { username: asUsername };
+  }
 
   const title = (req.body.title || '').trim().slice(0, 60);
   if (!title) return res.status(400).json({ error: 'Title required' });

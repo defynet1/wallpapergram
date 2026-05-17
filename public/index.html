@@ -1258,7 +1258,7 @@ async function openAdmin() {
     body.innerHTML = `
       <div class="admin-section">
         <div class="admin-section-title">✏️ Опубликовать от имени</div>
-        <div class="admin-tool"><label>Автор:</label><select id="adminPostAsUser">${userOpts}</select></div>
+        <div class="admin-tool"><label>Автор:</label><input type="text" id="adminPostAsUser" placeholder="Введи ник" style="flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:0.55rem 0.7rem; font-family:inherit; font-size:0.85rem"></div>
         <div class="admin-tool" style="flex-direction:column; align-items:stretch">
           <label style="flex:none; margin-bottom:0.4rem">Картинка:</label>
           <input type="file" id="adminPostAsFile" accept="image/*" style="flex:unset; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:0.4rem 0.5rem; font-size:0.85rem">
