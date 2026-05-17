@@ -637,6 +637,18 @@ app.post('/api/admin/post-as', authMiddleware, adminOnly, upload.single('image')
   res.json({ id });
 });
 
+// Удалить голоса ботов с поста
+app.delete('/api/admin/bot-votes/:postId', authMiddleware, adminOnly, (req, res) => {
+  const post = db.prepare('SELECT 1 FROM posts WHERE id = ?').get(req.params.postId);
+  if (!post) return res.status(404).json({ error: 'Post not found' });
+  const result = db.prepare(`
+    DELETE FROM votes WHERE post_id = ? AND username IN (
+      SELECT username FROM users WHERE is_bot = 1
+    )
+  `).run(req.params.postId);
+  res.json({ removed: result.changes });
+});
+
 // Снять с себя админку
 app.delete('/api/admin/self', authMiddleware, adminOnly, (req, res) => {
   db.prepare('UPDATE users SET is_admin = 0 WHERE username = ?').run(req.user.username);

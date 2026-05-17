@@ -1283,6 +1283,9 @@ async function openAdmin() {
           <option value="mix">🎲 Распределить</option>
         </select></div>
         <button class="admin-btn" onclick="adminBoostVotes()">Накрутить</button>
+        <div style="margin-top:0.5rem">
+          <button class="admin-btn" onclick="adminStopBotVotes()" style="background:var(--surface-2);color:var(--text-dim);border:1px solid var(--border)">🛑 Убрать голоса ботов</button>
+        </div>
         <div class="admin-result" id="adminVoteResult"></div>
       </div>
 
@@ -1343,6 +1346,16 @@ async function adminBoostVotes() {
   try {
     const r = await api('/api/admin/boost-votes/' + postId, { method: 'POST', body: { option, amount } });
     setAdminResult('adminVoteResult', `+${r.added} голосов`, false);
+    loadFeed();
+  } catch (e) { setAdminResult('adminVoteResult', e.message, true); }
+}
+
+async function adminStopBotVotes() {
+  const postId = document.getElementById('adminVotePost').value;
+  if (!postId) return setAdminResult('adminVoteResult', 'Выбери пост', true);
+  try {
+    const r = await api('/api/admin/bot-votes/' + postId, { method: 'DELETE' });
+    setAdminResult('adminVoteResult', `Удалено ${r.removed} голосов ботов`, false);
     loadFeed();
   } catch (e) { setAdminResult('adminVoteResult', e.message, true); }
 }
