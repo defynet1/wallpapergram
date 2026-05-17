@@ -1257,6 +1257,21 @@ async function openAdmin() {
 
     body.innerHTML = `
       <div class="admin-section">
+        <div class="admin-section-title">✏️ Опубликовать от имени</div>
+        <div class="admin-tool"><label>Автор:</label><select id="adminPostAsUser">${userOpts}</select></div>
+        <div class="admin-tool" style="flex-direction:column; align-items:stretch">
+          <label style="flex:none; margin-bottom:0.4rem">Картинка:</label>
+          <input type="file" id="adminPostAsFile" accept="image/*" style="flex:unset; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:0.4rem 0.5rem; font-size:0.85rem">
+        </div>
+        <div class="admin-tool"><label>Название:</label><input type="text" id="adminPostAsTitle" maxlength="60" placeholder="до 60 символов"></div>
+        <div class="admin-tool"><label>Описание:</label><input type="text" id="adminPostAsDesc" maxlength="200" placeholder="необязательно"></div>
+        <div class="admin-tool"><label>Категории:</label><input type="text" id="adminPostAsCats" placeholder='["nature","dark","minimal"]'></div>
+        <div class="admin-tool"><label>Качество:</label><input type="number" id="adminPostAsQuality" value="0.7" min="0" max="1" step="0.1"></div>
+        <button class="admin-btn" onclick="adminPostAs()">Опубликовать</button>
+        <div class="admin-result" id="adminPostAsResult"></div>
+      </div>
+
+      <div class="admin-section">
         <div class="admin-section-title">📊 Накрутить голоса</div>
         <div class="admin-tool"><label>Пост:</label><select id="adminVotePost">${postOpts}</select></div>
         <div class="admin-tool"><label>Сколько:</label><input type="number" id="adminVoteAmount" value="100" min="1" max="10000"></div>
@@ -1375,6 +1390,48 @@ async function adminDeletePost() {
     loadFeed();
     setTimeout(openAdmin, 200);
   } catch (e) { setAdminResult('adminDeleteResult', e.message, true); }
+}
+
+async function adminPostAs() {
+  const asUsername = document.getElementById('adminPostAsUser').value;
+  const file = document.getElementById('adminPostAsFile').files[0];
+  const title = document.getElementById('adminPostAsTitle').value.trim();
+  const desc = document.getElementById('adminPostAsDesc').value.trim();
+  const catsRaw = document.getElementById('adminPostAsCats').value.trim();
+  const quality = document.getElementById('adminPostAsQuality').value;
+
+  if (!asUsername) return setAdminResult('adminPostAsResult', 'Выбери автора', true);
+  if (!file) return setAdminResult('adminPostAsResult', 'Загрузи картинку', true);
+  if (!title) return setAdminResult('adminPostAsResult', 'Введи название', true);
+
+  let categories;
+  try { categories = JSON.parse(catsRaw); }
+  catch { return setAdminResult('adminPostAsResult', 'Категории: невалидный JSON, пример: ["nature","dark","minimal"]', true); }
+  if (!Array.isArray(categories) || categories.length < 3)
+    return setAdminResult('adminPostAsResult', 'Нужно минимум 3 категории', true);
+
+  const fd = new FormData();
+  fd.append('image', file);
+  fd.append('asUsername', asUsername);
+  fd.append('title', title);
+  fd.append('description', desc);
+  fd.append('categories', JSON.stringify(categories));
+  fd.append('quality', quality);
+
+  try {
+    const r = await fetch('/api/admin/post-as', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
+      body: fd
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Ошибка');
+    setAdminResult('adminPostAsResult', `✅ Пост опубликован от @${asUsername}`, false);
+    document.getElementById('adminPostAsFile').value = '';
+    document.getElementById('adminPostAsTitle').value = '';
+    document.getElementById('adminPostAsDesc').value = '';
+    loadFeed();
+  } catch (e) { setAdminResult('adminPostAsResult', e.message, true); }
 }
 
 async function adminClearAll() {

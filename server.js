@@ -602,6 +602,38 @@ app.delete('/api/admin/posts', authMiddleware, adminOnly, (req, res) => {
   res.json({ ok: true });
 });
 
+// Публикация поста от имени другого пользователя
+app.post('/api/admin/post-as', authMiddleware, adminOnly, upload.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No image' });
+
+  const asUsername = (req.body.asUsername || '').trim();
+  if (!asUsername) return res.status(400).json({ error: 'asUsername required' });
+
+  const targetUser = db.prepare('SELECT username FROM users WHERE username = ? COLLATE NOCASE').get(asUsername);
+  if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+  const title = (req.body.title || '').trim().slice(0, 60);
+  if (!title) return res.status(400).json({ error: 'Title required' });
+
+  const description = (req.body.description || '').trim().slice(0, 200);
+  let categories;
+  try { categories = JSON.parse(req.body.categories || '[]'); }
+  catch (e) { return res.status(400).json({ error: 'Invalid categories' }); }
+  if (!Array.isArray(categories) || categories.length < 3)
+    return res.status(400).json({ error: 'Need at least 3 categories' });
+
+  const quality = parseFloat(req.body.quality) || null;
+  const id = Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+  const imagePath = '/uploads/' + req.file.filename;
+
+  db.prepare(`
+    INSERT INTO posts (id, author, title, description, image_path, categories, quality, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, targetUser.username, title, description, imagePath, JSON.stringify(categories), quality, Date.now());
+
+  res.json({ id });
+});
+
 // Снять с себя админку
 app.delete('/api/admin/self', authMiddleware, adminOnly, (req, res) => {
   db.prepare('UPDATE users SET is_admin = 0 WHERE username = ?').run(req.user.username);
