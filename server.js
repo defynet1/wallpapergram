@@ -100,6 +100,10 @@ db.exec(`
 try {
   db.exec('ALTER TABLE users ADD COLUMN is_bot INTEGER DEFAULT 0');
 } catch (e) { /* колонка уже есть */ }
+// Миграция: bots_paused на постах
+try {
+  db.exec('ALTER TABLE posts ADD COLUMN bots_paused INTEGER DEFAULT 0');
+} catch (e) { /* колонка уже есть */ }
 
 // ============ APP SETUP ============
 const app = express();
@@ -637,6 +641,21 @@ app.post('/api/admin/post-as', authMiddleware, adminOnly, upload.single('image')
   res.json({ id });
 });
 
+// Пауза/возобновление ботов на посте
+app.post('/api/admin/posts/:id/bots-pause', authMiddleware, adminOnly, (req, res) => {
+  const post = db.prepare('SELECT 1 FROM posts WHERE id = ?').get(req.params.id);
+  if (!post) return res.status(404).json({ error: 'Post not found' });
+  db.prepare('UPDATE posts SET bots_paused = 1 WHERE id = ?').run(req.params.id);
+  res.json({ ok: true, bots_paused: true });
+});
+
+app.delete('/api/admin/posts/:id/bots-pause', authMiddleware, adminOnly, (req, res) => {
+  const post = db.prepare('SELECT 1 FROM posts WHERE id = ?').get(req.params.id);
+  if (!post) return res.status(404).json({ error: 'Post not found' });
+  db.prepare('UPDATE posts SET bots_paused = 0 WHERE id = ?').run(req.params.id);
+  res.json({ ok: true, bots_paused: false });
+});
+
 // Удалить голоса ботов с поста
 app.delete('/api/admin/bot-votes/:postId', authMiddleware, adminOnly, (req, res) => {
   const post = db.prepare('SELECT 1 FROM posts WHERE id = ?').get(req.params.postId);
@@ -708,7 +727,7 @@ function getBots() {
 // Один тик активности ботов: ходим по постам, добавляем виды/голоса.
 function botTick() {
   try {
-    const allPosts = db.prepare('SELECT id, quality, created_at FROM posts ORDER BY created_at DESC LIMIT 200').all();
+    const allPosts = db.prepare('SELECT id, quality, created_at FROM posts WHERE bots_paused = 0 ORDER BY created_at DESC LIMIT 200').all();
     if (!allPosts.length) return;
 
     const bots = getBots();

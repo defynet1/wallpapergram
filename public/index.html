@@ -1283,8 +1283,9 @@ async function openAdmin() {
           <option value="mix">🎲 Распределить</option>
         </select></div>
         <button class="admin-btn" onclick="adminBoostVotes()">Накрутить</button>
-        <div style="margin-top:0.5rem">
-          <button class="admin-btn" onclick="adminStopBotVotes()" style="background:var(--surface-2);color:var(--text-dim);border:1px solid var(--border)">🛑 Убрать голоса ботов</button>
+        <div style="display:flex; gap:0.5rem; margin-top:0.5rem">
+          <button class="admin-btn" onclick="adminPauseBots()" style="flex:1; background:var(--surface-2);color:var(--bad);border:1px solid var(--border)">⏸ Стоп боты</button>
+          <button class="admin-btn" onclick="adminResumeBots()" style="flex:1; background:var(--surface-2);color:var(--good);border:1px solid var(--border)">▶ Возобновить</button>
         </div>
         <div class="admin-result" id="adminVoteResult"></div>
       </div>
@@ -1350,13 +1351,21 @@ async function adminBoostVotes() {
   } catch (e) { setAdminResult('adminVoteResult', e.message, true); }
 }
 
-async function adminStopBotVotes() {
+async function adminPauseBots() {
   const postId = document.getElementById('adminVotePost').value;
   if (!postId) return setAdminResult('adminVoteResult', 'Выбери пост', true);
   try {
-    const r = await api('/api/admin/bot-votes/' + postId, { method: 'DELETE' });
-    setAdminResult('adminVoteResult', `Удалено ${r.removed} голосов ботов`, false);
-    loadFeed();
+    await api('/api/admin/posts/' + postId + '/bots-pause', { method: 'POST' });
+    setAdminResult('adminVoteResult', '⏸ Боты остановлены на этом посте', false);
+  } catch (e) { setAdminResult('adminVoteResult', e.message, true); }
+}
+
+async function adminResumeBots() {
+  const postId = document.getElementById('adminVotePost').value;
+  if (!postId) return setAdminResult('adminVoteResult', 'Выбери пост', true);
+  try {
+    await api('/api/admin/posts/' + postId + '/bots-pause', { method: 'DELETE' });
+    setAdminResult('adminVoteResult', '▶ Боты возобновлены на этом посте', false);
   } catch (e) { setAdminResult('adminVoteResult', e.message, true); }
 }
 
