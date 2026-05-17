@@ -13,7 +13,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 80;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const DATA_DIR = process.env.DATA_MOUNT_PATH || process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
