@@ -1,0 +1,12 @@
+meta:
+  environment: nodejs
+  toolchain:
+    name: node
+    version: 18
+
+build:
+  npmCI: true
+
+run:
+  persistenceMount: /data
+  containerPort: 3000

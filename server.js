@@ -1,7 +1,7 @@
 // ============ WALLPAPERS BACKEND ============
 // Один файл — весь API. SQLite для хранения, картинки на диске.
 // Запуск локально: node server.js
-// Деплой на Railway: просто залить в репозиторий, Railway сам подхватит.
+// Деплой: Railway / Amvera — просто залить в репозиторий.
 
 const express = require('express');
 const Database = require('better-sqlite3');
@@ -15,7 +15,7 @@ const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
-const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
+const DATA_DIR = process.env.DATA_MOUNT_PATH || process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const DB_PATH = path.join(DATA_DIR, 'db.sqlite');
 
