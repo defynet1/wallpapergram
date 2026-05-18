@@ -1291,14 +1291,18 @@ async function openAdmin() {
     body.innerHTML = `
       <div class="admin-section">
         <div class="admin-section-title">✏️ Опубликовать от имени</div>
-        <div class="admin-tool"><label>Автор:</label><input type="text" id="adminPostAsUser" placeholder="Введи ник" style="flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:0.55rem 0.7rem; font-family:inherit; font-size:0.85rem"></div>
+        <div class="admin-tool"><label>Автор:</label><input type="text" id="adminPostAsUser" placeholder="Введи ник"></div>
         <div class="admin-tool" style="flex-direction:column; align-items:stretch">
-          <label style="flex:none; margin-bottom:0.4rem">Картинка:</label>
-          <input type="file" id="adminPostAsFile" accept="image/*" style="flex:unset; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:0.4rem 0.5rem; font-size:0.85rem">
+          <label style="flex:none; margin-bottom:0.4rem">Файл (картинка / mp4 / webm / gif):</label>
+          <input type="file" id="adminPostAsFile" accept="image/*,video/mp4,video/webm,video/quicktime" style="flex:unset; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:0.4rem 0.5rem; font-size:0.85rem">
         </div>
         <div class="admin-tool"><label>Название:</label><input type="text" id="adminPostAsTitle" maxlength="60" placeholder="до 60 символов"></div>
         <div class="admin-tool"><label>Описание:</label><input type="text" id="adminPostAsDesc" maxlength="200" placeholder="необязательно"></div>
-        <div class="admin-tool"><label>Категории:</label><input type="text" id="adminPostAsCats" placeholder='["nature","dark","minimal"]'></div>
+        <div style="margin-top:0.5rem; margin-bottom:0.5rem">
+          <label style="display:block; font-size:0.75rem; color:var(--text-dim); margin-bottom:0.4rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em">Категории (минимум 3)</label>
+          <div class="category-picker" id="adminPostAsCategoryPicker"></div>
+          <div class="category-counter" id="adminPostAsCategoryCounter">Выбрано: 0 / нужно минимум 3</div>
+        </div>
         <div class="admin-tool"><label>Качество:</label><input type="number" id="adminPostAsQuality" value="0.7" min="0" max="1" step="0.1"></div>
         <button class="admin-btn" onclick="adminPostAs()">Опубликовать</button>
         <div class="admin-result" id="adminPostAsResult"></div>
@@ -1364,6 +1368,8 @@ async function openAdmin() {
         <button class="admin-btn" onclick="adminRevokeSelf()" style="background:var(--surface-2);color:var(--text-dim);border:1px solid var(--border)">Отказаться от прав админа</button>
       </div>
     `;
+    renderAdminPostAsCategoryPicker();
+    updateAdminPostAsCategoryCounter();
   } catch (e) {
     body.innerHTML = '<div class="empty-state">Ошибка загрузки</div>';
   }
@@ -1466,30 +1472,54 @@ async function adminDeletePost() {
   } catch (e) { setAdminResult('adminDeleteResult', e.message, true); }
 }
 
+let adminPostAsCategories = [];
+
+function renderAdminPostAsCategoryPicker() {
+  const wrap = document.getElementById('adminPostAsCategoryPicker');
+  if (!wrap) return;
+  wrap.innerHTML = CATEGORIES.map(c =>
+    `<div class="category-pick ${adminPostAsCategories.includes(c.tag) ? 'selected' : ''}" data-tag="${c.tag}">${c.label}</div>`
+  ).join('');
+  wrap.querySelectorAll('.category-pick[data-tag]').forEach(el => {
+    el.onclick = () => {
+      const tag = el.dataset.tag;
+      const idx = adminPostAsCategories.indexOf(tag);
+      if (idx >= 0) adminPostAsCategories.splice(idx, 1);
+      else adminPostAsCategories.push(tag);
+      updateAdminPostAsCategoryCounter();
+      renderAdminPostAsCategoryPicker();
+    };
+  });
+}
+
+function updateAdminPostAsCategoryCounter() {
+  const n = adminPostAsCategories.length;
+  const c = document.getElementById('adminPostAsCategoryCounter');
+  if (!c) return;
+  if (n >= 3) c.textContent = `Выбрано: ${n} ✓`;
+  else c.textContent = `Выбрано: ${n} / нужно минимум 3`;
+  c.classList.toggle('valid', n >= 3);
+}
+
 async function adminPostAs() {
-  const asUsername = document.getElementById('adminPostAsUser').value;
+  const asUsername = document.getElementById('adminPostAsUser').value.trim();
   const file = document.getElementById('adminPostAsFile').files[0];
   const title = document.getElementById('adminPostAsTitle').value.trim();
   const desc = document.getElementById('adminPostAsDesc').value.trim();
-  const catsRaw = document.getElementById('adminPostAsCats').value.trim();
   const quality = document.getElementById('adminPostAsQuality').value;
 
-  if (!asUsername) return setAdminResult('adminPostAsResult', 'Выбери автора', true);
-  if (!file) return setAdminResult('adminPostAsResult', 'Загрузи картинку', true);
+  if (!asUsername) return setAdminResult('adminPostAsResult', 'Введи ник автора', true);
+  if (!file) return setAdminResult('adminPostAsResult', 'Загрузи файл', true);
   if (!title) return setAdminResult('adminPostAsResult', 'Введи название', true);
-
-  let categories;
-  try { categories = JSON.parse(catsRaw); }
-  catch { return setAdminResult('adminPostAsResult', 'Категории: невалидный JSON, пример: ["nature","dark","minimal"]', true); }
-  if (!Array.isArray(categories) || categories.length < 3)
-    return setAdminResult('adminPostAsResult', 'Нужно минимум 3 категории', true);
+  if (adminPostAsCategories.length < 3)
+    return setAdminResult('adminPostAsResult', `Нужно минимум 3 категории (выбрано ${adminPostAsCategories.length})`, true);
 
   const fd = new FormData();
   fd.append('image', file);
   fd.append('asUsername', asUsername);
   fd.append('title', title);
   fd.append('description', desc);
-  fd.append('categories', JSON.stringify(categories));
+  fd.append('categories', JSON.stringify(adminPostAsCategories));
   fd.append('quality', quality);
 
   try {
@@ -1504,6 +1534,10 @@ async function adminPostAs() {
     document.getElementById('adminPostAsFile').value = '';
     document.getElementById('adminPostAsTitle').value = '';
     document.getElementById('adminPostAsDesc').value = '';
+    document.getElementById('adminPostAsUser').value = '';
+    adminPostAsCategories = [];
+    renderAdminPostAsCategoryPicker();
+    updateAdminPostAsCategoryCounter();
     loadFeed();
   } catch (e) { setAdminResult('adminPostAsResult', e.message, true); }
 }
