@@ -16,14 +16,16 @@
   a { color: var(--accent); }
 
   /* === HEADER === */
-  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.85rem 1.5rem 0; position: sticky; top: 0; z-index: 80; }
-  .header-top { display: flex; align-items: center; justify-content: center; padding-bottom: 0.7rem; }
-  .logo { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; }
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.9rem 1.5rem; position: sticky; top: 0; z-index: 80; display: flex; align-items: center; gap: 1rem; }
+  .logo { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; flex-shrink: 0; }
   .logo span { color: var(--accent); }
-  .section-tabs { display: flex; gap: 1.5rem; justify-content: center; }
-  .section-tab { background: none; border: none; color: var(--text-dim); font-family: inherit; font-size: 0.95rem; font-weight: 700; padding: 0 0 0.7rem 0; cursor: pointer; position: relative; }
-  .section-tab.active { color: var(--text); }
-  .section-tab.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent); border-radius: 2px; }
+  .section-tabs { display: flex; gap: 0.5rem; margin-left: auto; }
+  .section-tab { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); font-family: inherit; font-size: 0.85rem; font-weight: 700; padding: 0.45rem 0.85rem; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+  .section-tab.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  @media (max-width: 420px) {
+    header { padding: 0.75rem 1rem; gap: 0.5rem; }
+    .section-tab { font-size: 0.78rem; padding: 0.4rem 0.65rem; }
+  }
 
   /* === PAGES === */
   .page { display: none; max-width: 720px; margin: 0 auto; padding: 1rem 1.5rem; }
@@ -307,7 +309,7 @@
 </div>
 
 <header>
-  <div class="header-top"><div class="logo">wallper<span>.</span></div></div>
+  <div class="logo">wallper<span>.</span></div>
   <div class="section-tabs">
     <button class="section-tab active" data-section="wallpaper" onclick="switchSection('wallpaper')">🖼 Обои</button>
     <button class="section-tab" data-section="avatar" onclick="switchSection('avatar')">😎 Аватарки</button>
