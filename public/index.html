@@ -74,7 +74,8 @@
   .post-title { padding: 0 1.25rem 0.5rem; font-size: 1.15rem; font-weight: 700; }
   .post-desc { padding: 0 1.25rem 0.75rem; font-size: 0.9rem; color: var(--text-dim); line-height: 1.5; }
   .post-img-wrap { background: #000; max-height: 480px; overflow: hidden; display: flex; justify-content: center; position: relative; }
-  .post-img-wrap img { width: 100%; height: auto; max-height: 480px; object-fit: contain; }
+  .post-img-wrap img, .post-img-wrap video { width: 100%; height: auto; max-height: 480px; object-fit: contain; }
+  .live-badge { position: absolute; top: 0.85rem; left: 0.85rem; background: rgba(255, 70, 90, 0.9); color: #fff; font-size: 0.7rem; font-weight: 800; padding: 0.25rem 0.55rem; border-radius: 6px; letter-spacing: 0.06em; backdrop-filter: blur(8px); box-shadow: 0 2px 12px rgba(255, 70, 90, 0.4); }
   .download-btn { position: absolute; bottom: 0.85rem; right: 0.85rem; background: rgba(15, 20, 25, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s; }
   .post-img-wrap:hover .download-btn { opacity: 1; }
   @media (hover: none) { .download-btn { opacity: 1; } }
@@ -159,7 +160,7 @@
   .upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: var(--surface-2); }
   .upload-icon { width: 56px; height: 56px; background: var(--accent-soft); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; color: var(--accent); font-size: 1.8rem; font-weight: 700; }
   #fileInput { display: none; }
-  .preview-img { max-width: 100%; max-height: 240px; border-radius: 12px; display: block; margin: 0 auto 1rem; }
+  .preview-img, .preview-video { max-width: 100%; max-height: 240px; border-radius: 12px; display: block; margin: 0 auto 1rem; }
   .author-display { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 0.9rem; display: flex; align-items: center; gap: 0.65rem; margin-bottom: 1rem; }
   .author-display-avatar { width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent), var(--cool)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--bg); flex-shrink: 0; background-size: cover; background-position: center; }
   .author-display-avatar.has-image { color: transparent; }
@@ -322,11 +323,11 @@
   <div class="upload-zone" id="dropZone">
     <div class="upload-icon">+</div>
     <div>Загрузить обои</div>
-    <div style="font-size:0.85rem;color:var(--text-dim);margin-top:0.4rem">PNG · JPG · WEBP · до 6MB</div>
-    <input type="file" id="fileInput" accept="image/*">
+    <div style="font-size:0.85rem;color:var(--text-dim);margin-top:0.4rem">PNG · JPG · WEBP · GIF · MP4 · WEBM · до 30MB</div>
+    <input type="file" id="fileInput" accept="image/*,video/mp4,video/webm,video/quicktime">
   </div>
   <form id="uploadForm" style="display:none">
-    <img class="preview-img" id="previewImg">
+    <div id="previewContainer"></div>
     <div class="author-display">
       <div class="author-display-avatar" id="authorDisplayAvatar">?</div>
       <div>
@@ -712,7 +713,10 @@ function renderPost(p) {
       <div class="post-title">${escapeHtml(p.title)}</div>
       ${p.description ? `<div class="post-desc">${escapeHtml(p.description)}</div>` : ''}
       <div class="post-img-wrap">
-        <img src="${p.image}" alt="">
+        ${isVideoUrl(p.image)
+          ? `<video src="${p.image}" autoplay loop muted playsinline preload="metadata"></video>`
+          : `<img src="${p.image}" alt="">`}
+        ${isAnimatedUrl(p.image) ? '<div class="live-badge">🎬 LIVE</div>' : ''}
         <button class="download-btn" onclick="downloadImage('${p.image}', '${escapeAttr(p.title)}')">
           <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
         </button>
@@ -872,10 +876,23 @@ async function deletePost(id) {
   } catch (e) { alert(e.message); }
 }
 
+function urlExt(url) {
+  const m = (url || '').match(/\.([a-z0-9]+)(\?|$)/i);
+  return m ? m[1].toLowerCase() : '';
+}
+function isVideoUrl(url) {
+  const ext = urlExt(url);
+  return ext === 'mp4' || ext === 'webm' || ext === 'mov';
+}
+function isAnimatedUrl(url) {
+  return isVideoUrl(url) || urlExt(url) === 'gif';
+}
+
 function downloadImage(url, title) {
   const safe = (title || 'wallpaper').replace(/[^a-zа-я0-9 -]/gi, '').replace(/\s+/g, '-').slice(0, 40);
+  const ext = urlExt(url) || 'jpg';
   const a = document.createElement('a');
-  a.href = url; a.download = safe + '.jpg'; a.click();
+  a.href = url; a.download = safe + '.' + ext; a.click();
 }
 
 async function toggleFollow(ev, username) {
@@ -950,21 +967,36 @@ dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('drop', e => { if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
 fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
 
+function isAnimatedFile(f) {
+  return f.type.startsWith('video/') || f.type === 'image/gif';
+}
+
 function handleFile(f) {
-  if (!f.type.startsWith('image/')) return alert('Это не изображение');
-  if (f.size > 6 * 1024 * 1024) return alert('Файл больше 6MB');
+  const isVideo = f.type.startsWith('video/');
+  const isImage = f.type.startsWith('image/');
+  if (!isImage && !isVideo) return alert('Поддерживаются изображения и видео (mp4/webm/mov)');
+  if (f.size > 30 * 1024 * 1024) return alert('Файл больше 30MB');
   pendingFile = f;
   const reader = new FileReader();
   reader.onload = ev => {
-    document.getElementById('previewImg').src = ev.target.result;
+    const container = document.getElementById('previewContainer');
+    if (isVideo) {
+      container.innerHTML = `<video class="preview-video" src="${ev.target.result}" autoplay loop muted playsinline></video>`;
+      pendingQuality = 0.7;
+    } else {
+      container.innerHTML = `<img class="preview-img" id="previewImg" src="${ev.target.result}">`;
+      if (f.type === 'image/gif') {
+        pendingQuality = 0.7;
+      } else {
+        const img = new Image();
+        img.onload = () => {
+          pendingQuality = measureImageQuality(img, img.width, img.height, f.size);
+        };
+        img.src = ev.target.result;
+      }
+    }
     document.getElementById('uploadForm').style.display = 'block';
     document.getElementById('titleInput').focus();
-    // Замер качества
-    const img = new Image();
-    img.onload = () => {
-      pendingQuality = measureImageQuality(img, img.width, img.height, f.size);
-    };
-    img.src = ev.target.result;
   };
   reader.readAsDataURL(f);
 }
@@ -982,6 +1014,7 @@ function resetCreateForm() {
   document.getElementById('titleInput').value = '';
   document.getElementById('descInput').value = '';
   document.getElementById('fileInput').value = '';
+  document.getElementById('previewContainer').innerHTML = '';
   document.getElementById('categoryCounter').textContent = 'Выбрано: 0 / нужно минимум 3';
   document.getElementById('categoryCounter').classList.remove('valid', 'error');
   renderCategoryPicker();

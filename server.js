@@ -128,6 +128,15 @@ async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_views_post ON views(post_id);
   `);
+  // Встроенная категория «живые обои» (нельзя удалить юзером — is_custom=0)
+  await pool.query(
+    "INSERT INTO categories (tag, label, is_custom) VALUES ('live', '🎬 Живые', 0) ON CONFLICT (tag) DO NOTHING"
+  );
+}
+
+function isAnimated(mimetype) {
+  if (!mimetype) return false;
+  return mimetype.startsWith('video/') || mimetype === 'image/gif';
 }
 
 // ============ SSE (REALTIME) ============
@@ -162,12 +171,14 @@ const storage = multer.diskStorage({
     cb(null, crypto.randomBytes(12).toString('hex') + ext);
   }
 });
+const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
 const upload = multer({
   storage,
-  limits: { fileSize: 6 * 1024 * 1024 },
+  limits: { fileSize: 30 * 1024 * 1024 }, // 30 MB — хватит и на короткие mp4/webm
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
-    else cb(new Error('Only images allowed'));
+    else if (ALLOWED_VIDEO_TYPES.has(file.mimetype)) cb(null, true);
+    else cb(new Error('Only images and videos allowed'));
   }
 });
 
@@ -374,6 +385,10 @@ app.post('/api/posts', authMiddleware, upload.single('image'), async (req, res) 
     catch (e) { return res.status(400).json({ error: 'Invalid categories' }); }
     if (!Array.isArray(categories) || categories.length < 3)
       return res.status(400).json({ error: 'Need at least 3 categories' });
+
+    if (isAnimated(req.file.mimetype) && !categories.includes('live')) {
+      categories = ['live', ...categories];
+    }
 
     const quality = parseFloat(req.body.quality) || null;
     const id = Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
@@ -737,6 +752,10 @@ app.post('/api/admin/post-as', authMiddleware, adminOnly, upload.single('image')
     catch (e) { return res.status(400).json({ error: 'Invalid categories' }); }
     if (!Array.isArray(categories) || categories.length < 3)
       return res.status(400).json({ error: 'Need at least 3 categories' });
+
+    if (isAnimated(req.file.mimetype) && !categories.includes('live')) {
+      categories = ['live', ...categories];
+    }
 
     const quality = parseFloat(req.body.quality) || null;
     const id = Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
