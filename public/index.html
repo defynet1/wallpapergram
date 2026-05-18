@@ -1519,6 +1519,91 @@ function switchPage(name) {
   window.scrollTo({ top: 0 });
 }
 
+// ============ REALTIME (SSE) ============
+let sseConnection = null;
+let pendingReload = null;
+function scheduleReload() {
+  if (pendingReload) return;
+  pendingReload = setTimeout(() => {
+    pendingReload = null;
+    if (currentPage === 'feed') loadFeed();
+  }, 400);
+}
+
+function applyCountsUpdate(u) {
+  const post = posts.find(p => p.id === u.id);
+  if (post) {
+    if (u.votes) post.votes = u.votes;
+    if (typeof u.views_count === 'number') post.views_count = u.views_count;
+    if (typeof u.comments_count === 'number') post.comments_count = u.comments_count;
+  }
+  const article = document.querySelector(`article.post[data-id="${u.id}"]`);
+  if (!article) return;
+
+  if (typeof u.views_count === 'number') {
+    const timeEl = article.querySelector('.post-time');
+    if (timeEl && post) timeEl.textContent = formatTime(post.created_at) + ' · 👁 ' + formatVoteCount(u.views_count);
+  }
+
+  if (typeof u.comments_count === 'number') {
+    const toggle = article.querySelector('.comments-toggle');
+    if (toggle) {
+      const wasOpen = toggle.classList.contains('open');
+      toggle.innerHTML = `💬 <span class="count-badge">${u.comments_count}</span> ${pluralizeComments(u.comments_count)} <span class="chev">▼</span>`;
+      if (wasOpen) toggle.classList.add('open');
+    }
+  }
+
+  if (u.votes) {
+    const total = (u.votes.love || 0) + (u.votes.like || 0) + (u.votes.meh || 0) + (u.votes.nope || 0);
+    const optEls = article.querySelectorAll('.poll-option');
+    POLL_OPTIONS.forEach((o, i) => {
+      const el = optEls[i];
+      if (!el) return;
+      const v = u.votes[o.id] || 0;
+      const pct = total ? Math.round(v / total * 100) : 0;
+      const bar = el.querySelector('.poll-bar');
+      const pctEl = el.querySelector('.poll-percent');
+      if (bar) bar.style.width = pct + '%';
+      if (pctEl) pctEl.textContent = pct + '%';
+    });
+    const totalEl = article.querySelector('.poll-foot .count');
+    if (totalEl) totalEl.textContent = formatVoteCount(total);
+    const verdictEl = article.querySelectorAll('.poll-foot span')[1];
+    if (verdictEl && post) verdictEl.textContent = getVerdict(post.votes);
+  }
+}
+
+function connectSSE() {
+  if (sseConnection) sseConnection.close();
+  sseConnection = new EventSource('/api/events');
+  sseConnection.addEventListener('update', e => {
+    try { applyCountsUpdate(JSON.parse(e.data)); } catch {}
+  });
+  sseConnection.addEventListener('updates', e => {
+    try {
+      const { updates } = JSON.parse(e.data);
+      updates.forEach(applyCountsUpdate);
+    } catch {}
+  });
+  sseConnection.addEventListener('new-post', () => scheduleReload());
+  sseConnection.addEventListener('delete-post', e => {
+    try {
+      const { id } = JSON.parse(e.data);
+      posts = posts.filter(p => p.id !== id);
+      const el = document.querySelector(`article.post[data-id="${id}"]`);
+      if (el) el.remove();
+    } catch {}
+  });
+  sseConnection.addEventListener('posts-cleared', () => {
+    posts = [];
+    if (currentPage === 'feed') renderFeed();
+  });
+  sseConnection.onerror = () => {
+    // EventSource сам переподключается
+  };
+}
+
 // ============ INIT ============
 (async function init() {
   await loadCategories();
@@ -1526,8 +1611,9 @@ function switchPage(name) {
   if (!currentUser) showAuth();
   else hideAuth();
   await loadFeed();
-  // Автообновление ленты каждые 30 секунд
-  setInterval(() => { if (currentPage === 'feed') loadFeed(); }, 30000);
+  connectSSE();
+  // Fallback: на всякий случай раз в 2 минуты — если SSE отвалится без error
+  setInterval(() => { if (currentPage === 'feed' && document.visibilityState === 'visible') loadFeed(); }, 120000);
 })();
 </script>
 </body>

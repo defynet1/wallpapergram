@@ -130,6 +130,25 @@ async function initDb() {
   `);
 }
 
+// ============ SSE (REALTIME) ============
+const sseClients = new Set();
+
+function sseBroadcast(event, data) {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of sseClients) {
+    try { res.write(payload); } catch (e) { /* клиент уже отвалился */ }
+  }
+}
+
+async function postCounts(postId) {
+  const votes = await all('SELECT option, COUNT(*)::int as c FROM votes WHERE post_id = ? GROUP BY option', postId);
+  const tally = { love: 0, like: 0, meh: 0, nope: 0 };
+  votes.forEach(v => { if (tally[v.option] !== undefined) tally[v.option] = v.c; });
+  const commentsCount = (await one('SELECT COUNT(*)::int as c FROM comments WHERE post_id = ?', postId)).c;
+  const viewsCount = (await one('SELECT COUNT(*)::int as c FROM views WHERE post_id = ?', postId)).c;
+  return { id: postId, votes: tally, comments_count: commentsCount, views_count: viewsCount };
+}
+
 // ============ APP SETUP ============
 const app = express();
 app.use(cors());
@@ -184,6 +203,26 @@ async function adminOnly(req, res, next) {
     res.status(500).json({ error: 'DB error' });
   }
 }
+
+// ============ SSE ENDPOINT ============
+app.get('/api/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+  res.write(': connected\n\n');
+
+  const keepalive = setInterval(() => {
+    try { res.write(': ka\n\n'); } catch (e) {}
+  }, 25000);
+
+  sseClients.add(res);
+  req.on('close', () => {
+    clearInterval(keepalive);
+    sseClients.delete(res);
+  });
+});
 
 // ============ AUTH ROUTES ============
 app.post('/api/register', async (req, res) => {
@@ -345,7 +384,7 @@ app.post('/api/posts', authMiddleware, upload.single('image'), async (req, res) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       id, req.user.username, title, description, imagePath, JSON.stringify(categories), quality, Date.now()
     );
-
+    sseBroadcast('new-post', { id });
     res.json({ id });
   } catch (e) {
     console.error('create post error:', e);
@@ -368,10 +407,10 @@ app.delete('/api/posts/:id', authMiddleware, async (req, res) => {
   }
 
   await run('DELETE FROM posts WHERE id = ?', req.params.id);
-  // Каскадное удаление зависимых строк
   await run('DELETE FROM votes WHERE post_id = ?', req.params.id);
   await run('DELETE FROM comments WHERE post_id = ?', req.params.id);
   await run('DELETE FROM views WHERE post_id = ?', req.params.id);
+  sseBroadcast('delete-post', { id: req.params.id });
   res.json({ ok: true });
 });
 
@@ -391,10 +430,13 @@ app.get('/api/users/:username/posts', optionalAuth, async (req, res) => {
 app.post('/api/posts/:id/view', authMiddleware, async (req, res) => {
   const post = await one('SELECT 1 FROM posts WHERE id = ?', req.params.id);
   if (!post) return res.status(404).json({ error: 'Post not found' });
-  await run(
+  const result = await run(
     'INSERT INTO views (post_id, viewer, created_at) VALUES (?, ?, ?) ON CONFLICT (post_id, viewer) DO NOTHING',
     req.params.id, req.user.username.toLowerCase(), Date.now()
   );
+  if (result.changes > 0) {
+    sseBroadcast('update', await postCounts(req.params.id));
+  }
   res.json({ ok: true });
 });
 
@@ -412,11 +454,13 @@ app.post('/api/posts/:id/vote', authMiddleware, async (req, res) => {
      ON CONFLICT (post_id, username) DO UPDATE SET option = EXCLUDED.option`,
     req.params.id, req.user.username, option, Date.now()
   );
+  sseBroadcast('update', await postCounts(req.params.id));
   res.json({ ok: true });
 });
 
 app.delete('/api/posts/:id/vote', authMiddleware, async (req, res) => {
   await run('DELETE FROM votes WHERE post_id = ? AND username = ?', req.params.id, req.user.username);
+  sseBroadcast('update', await postCounts(req.params.id));
   res.json({ ok: true });
 });
 
@@ -445,6 +489,7 @@ app.post('/api/posts/:id/comments', authMiddleware, async (req, res) => {
     'INSERT INTO comments (id, post_id, author, text, created_at) VALUES (?, ?, ?, ?, ?)',
     id, req.params.id, req.user.username, text, Date.now()
   );
+  sseBroadcast('update', await postCounts(req.params.id));
   res.json({ id });
 });
 
@@ -462,6 +507,7 @@ app.delete('/api/comments/:id', authMiddleware, async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
 
   await run('DELETE FROM comments WHERE id = ?', req.params.id);
+  sseBroadcast('update', await postCounts(c.post_id));
   res.json({ ok: true });
 });
 
@@ -583,6 +629,7 @@ app.post('/api/admin/boost-votes/:postId', authMiddleware, adminOnly, async (req
         );
       }
     });
+    sseBroadcast('update', await postCounts(req.params.postId));
     res.json({ added: n });
   } catch (e) {
     console.error('boost-votes error:', e);
@@ -605,6 +652,7 @@ app.post('/api/admin/boost-views/:postId', authMiddleware, adminOnly, async (req
         );
       }
     });
+    sseBroadcast('update', await postCounts(req.params.postId));
     res.json({ added: n });
   } catch (e) {
     console.error('boost-views error:', e);
@@ -663,6 +711,7 @@ app.delete('/api/admin/posts', authMiddleware, adminOnly, async (req, res) => {
   await run('DELETE FROM votes');
   await run('DELETE FROM comments');
   await run('DELETE FROM views');
+  sseBroadcast('posts-cleared', {});
   res.json({ ok: true });
 });
 
@@ -698,6 +747,7 @@ app.post('/api/admin/post-as', authMiddleware, adminOnly, upload.single('image')
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       id, targetUser.username, title, description, imagePath, JSON.stringify(categories), quality, Date.now()
     );
+    sseBroadcast('new-post', { id });
     res.json({ id });
   } catch (e) {
     console.error('post-as error:', e);
@@ -726,6 +776,7 @@ app.delete('/api/admin/bot-votes/:postId', authMiddleware, adminOnly, async (req
     'DELETE FROM votes WHERE post_id = ? AND username IN (SELECT username FROM users WHERE is_bot = 1)',
     req.params.postId
   );
+  sseBroadcast('update', await postCounts(req.params.postId));
   res.json({ removed: result.changes });
 });
 
@@ -778,6 +829,7 @@ let botTickRunning = false;
 async function botTick() {
   if (botTickRunning) return;
   botTickRunning = true;
+  const changedPosts = new Set();
   try {
     const allPosts = await all('SELECT id, quality, created_at FROM posts WHERE bots_paused = 0 ORDER BY created_at DESC LIMIT 200');
     if (!allPosts.length) return;
@@ -807,10 +859,11 @@ async function botTick() {
 
         for (const botName of selected) {
           const botKey = botName.toLowerCase();
-          await client.query(
+          const r = await client.query(
             'INSERT INTO views (post_id, viewer, created_at) VALUES ($1, $2, $3) ON CONFLICT (post_id, viewer) DO NOTHING',
             [post.id, botKey, Date.now()]
           );
+          if (r.rowCount > 0) changedPosts.add(post.id);
 
           const q = post.quality !== null && post.quality !== undefined ? post.quality : 0.65;
           const voteChance = 0.3 + q * 0.2;
@@ -827,14 +880,20 @@ async function botTick() {
             if (post.quality === null || post.quality === undefined) {
               opt = r < 0.25 ? 'love' : r < 0.55 ? 'like' : r < 0.85 ? 'meh' : 'nope';
             }
-            await client.query(
+            const vr = await client.query(
               'INSERT INTO votes (post_id, username, option, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (post_id, username) DO NOTHING',
               [post.id, botKey, opt, Date.now()]
             );
+            if (vr.rowCount > 0) changedPosts.add(post.id);
           }
         }
       }
     });
+
+    if (changedPosts.size && sseClients.size) {
+      const updates = await Promise.all([...changedPosts].map(postCounts));
+      sseBroadcast('updates', { updates });
+    }
   } catch (e) {
     console.error('botTick error:', e);
   } finally {
