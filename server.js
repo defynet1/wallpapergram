@@ -590,6 +590,28 @@ app.post('/api/admin/boost-votes/:postId', authMiddleware, adminOnly, async (req
   }
 });
 
+app.post('/api/admin/boost-views/:postId', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const n = Math.max(1, Math.min(100000, parseInt(req.body.amount, 10) || 100));
+    const post = await one('SELECT 1 FROM posts WHERE id = ?', req.params.postId);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+
+    await withTx(async (client) => {
+      for (let i = 0; i < n; i++) {
+        const name = 'view_' + crypto.randomBytes(6).toString('hex');
+        await client.query(
+          'INSERT INTO views (post_id, viewer, created_at) VALUES ($1, $2, $3) ON CONFLICT (post_id, viewer) DO NOTHING',
+          [req.params.postId, name, Date.now()]
+        );
+      }
+    });
+    res.json({ added: n });
+  } catch (e) {
+    console.error('boost-views error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.post('/api/admin/boost-followers/:username', authMiddleware, adminOnly, async (req, res) => {
   try {
     const n = Math.max(1, Math.min(10000, parseInt(req.body.amount, 10) || 50));

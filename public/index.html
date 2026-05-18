@@ -1291,6 +1291,14 @@ async function openAdmin() {
       </div>
 
       <div class="admin-section">
+        <div class="admin-section-title">👁️ Накрутить просмотры</div>
+        <div class="admin-tool"><label>Пост:</label><select id="adminViewPost">${postOpts}</select></div>
+        <div class="admin-tool"><label>Сколько:</label><input type="number" id="adminViewAmount" value="500" min="1" max="100000"></div>
+        <button class="admin-btn" onclick="adminBoostViews()">Накрутить</button>
+        <div class="admin-result" id="adminViewResult"></div>
+      </div>
+
+      <div class="admin-section">
         <div class="admin-section-title">👥 Накрутить подписчиков</div>
         <div class="admin-tool"><label>Кому:</label><select id="adminFollowTarget">${userOpts}</select></div>
         <div class="admin-tool"><label>Сколько:</label><input type="number" id="adminFollowAmount" value="50" min="1" max="10000"></div>
@@ -1367,6 +1375,17 @@ async function adminResumeBots() {
     await api('/api/admin/posts/' + postId + '/bots-pause', { method: 'DELETE' });
     setAdminResult('adminVoteResult', '▶ Боты возобновлены на этом посте', false);
   } catch (e) { setAdminResult('adminVoteResult', e.message, true); }
+}
+
+async function adminBoostViews() {
+  const postId = document.getElementById('adminViewPost').value;
+  const amount = parseInt(document.getElementById('adminViewAmount').value, 10);
+  if (!postId || !amount) return setAdminResult('adminViewResult', 'Заполни поля', true);
+  try {
+    const r = await api('/api/admin/boost-views/' + postId, { method: 'POST', body: { amount } });
+    setAdminResult('adminViewResult', `+${r.added} просмотров`, false);
+    loadFeed();
+  } catch (e) { setAdminResult('adminViewResult', e.message, true); }
 }
 
 async function adminBoostFollowers() {
