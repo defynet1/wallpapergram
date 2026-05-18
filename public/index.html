@@ -45,6 +45,23 @@
   .chat-time { font-size: 0.7rem; color: var(--text-dim); }
   .chat-unread { background: var(--accent); color: var(--bg); font-size: 0.7rem; font-weight: 800; min-width: 20px; height: 20px; border-radius: 999px; padding: 0 6px; display: flex; align-items: center; justify-content: center; }
 
+  /* === SHOP === */
+  .shop-card { background: var(--surface); border-radius: 16px; overflow: hidden; animation: slideIn 0.4s ease-out; }
+  .shop-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 2px; background: #000; max-height: 320px; overflow: hidden; }
+  .shop-images img, .shop-images video { width: 100%; height: 100%; min-height: 140px; max-height: 320px; object-fit: cover; cursor: pointer; }
+  .shop-images.single img, .shop-images.single video { max-height: 380px; min-height: 0; }
+  .shop-body { padding: 1rem 1.25rem 1.25rem; }
+  .shop-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.5rem; }
+  .shop-title { font-size: 1.05rem; font-weight: 700; flex: 1; line-height: 1.3; }
+  .shop-price { background: linear-gradient(135deg, var(--good), #2ea675); color: #042; font-weight: 800; font-size: 0.95rem; padding: 0.3rem 0.7rem; border-radius: 8px; white-space: nowrap; flex-shrink: 0; }
+  .shop-desc { color: var(--text-dim); font-size: 0.9rem; line-height: 1.45; margin-bottom: 0.85rem; white-space: pre-wrap; word-wrap: break-word; }
+  .shop-author { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.85rem; }
+  .shop-author-name { font-weight: 700; font-size: 0.9rem; cursor: pointer; }
+  .shop-author-name:hover { color: var(--accent); }
+  .shop-time { margin-left: auto; font-size: 0.78rem; color: var(--text-dim); }
+  .shop-actions { display: flex; gap: 0.5rem; }
+  .shop-actions .btn { padding: 0.65rem 1rem; font-size: 0.9rem; }
+
   /* === CHAT VIEW === */
   .chat-thread { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.5rem 0 1rem; }
   .msg { max-width: 80%; padding: 0.55rem 0.85rem; border-radius: 16px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -326,6 +343,36 @@
   </div>
 </div>
 
+<!-- SHOP CREATE MODAL -->
+<div class="modal-overlay" id="shopCreateOverlay" style="display:none" onclick="if(event.target===this)closeShopCreate()">
+  <div class="modal-card">
+    <div class="auth-title">🛍 Новое объявление</div>
+    <div class="auth-subtitle">Расскажи людям что ты предлагаешь</div>
+    <div class="auth-error" id="shopCreateError"></div>
+    <form id="shopCreateForm">
+      <div class="form-field">
+        <label>Название услуги</label>
+        <input type="text" id="shopTitle" maxlength="80" placeholder="Например: Делаю аватарки на заказ" required>
+      </div>
+      <div class="form-field">
+        <label>Цена в ₽</label>
+        <input type="number" id="shopPrice" min="0" max="10000000" placeholder="500" required>
+      </div>
+      <div class="form-field">
+        <label>Описание</label>
+        <textarea id="shopDesc" maxlength="1000" rows="4" placeholder="Что входит, сроки, контакты..."></textarea>
+      </div>
+      <div class="form-field">
+        <label>Примеры работ (до 5 файлов)</label>
+        <input type="file" id="shopImages" accept="image/*,video/mp4,video/webm" multiple required>
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-top:0.4rem">PNG · JPG · WEBP · GIF · MP4 — до 30MB на файл</div>
+      </div>
+      <button type="submit" class="auth-submit">Опубликовать</button>
+      <button type="button" class="btn btn-secondary" onclick="closeShopCreate()" style="margin-top:0.5rem">Отмена</button>
+    </form>
+  </div>
+</div>
+
 <!-- ADMIN MODAL -->
 <div class="modal-overlay" id="adminOverlay" style="display:none" onclick="if(event.target===this)closeAdmin()">
   <div class="modal-card admin-card">
@@ -346,6 +393,7 @@
   <div class="section-tabs">
     <button class="section-tab active" data-section="wallpaper" onclick="switchSection('wallpaper')">🖼 Обои</button>
     <button class="section-tab" data-section="avatar" onclick="switchSection('avatar')">😎 Аватарки</button>
+    <button class="section-tab" data-section="shop" onclick="switchSection('shop')">🛍 Shop</button>
   </div>
 </header>
 
@@ -472,7 +520,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1V9.5z"/></svg>
     Лента
   </button>
-  <button class="nav-create" onclick="switchPage('create')">
+  <button class="nav-create" onclick="onCreateClick()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
   </button>
   <button class="nav-btn" id="navProfile" onclick="switchPage('profile')">
@@ -557,18 +605,146 @@ async function switchSection(section) {
   document.querySelectorAll('.section-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.section === section);
   });
-  // Обновим заголовок hero
+  // Hero
   const hero = document.querySelector('#pageFeed .hero h1');
   if (hero) {
-    hero.innerHTML = section === 'avatar'
+    hero.innerHTML = section === 'shop'
+      ? 'Shop —<br>услуги от мастеров сообщества'
+      : section === 'avatar'
       ? 'Аватарки —<br>смотри, голосуй, заливай свои'
       : 'Покажи свои обои —<br>посмотрим что скажут люди';
   }
-  // Заголовок страницы создания
+  // Категории — у shop их нет
+  const chips = document.getElementById('categoryChips');
+  if (chips) chips.style.display = section === 'shop' ? 'none' : '';
   const createTitle = document.querySelector('#pageCreate .page-title');
   if (createTitle) createTitle.textContent = section === 'avatar' ? 'Новая аватарка' : 'Новые обои';
-  await loadCategories();
-  if (currentPage === 'feed') await loadFeed();
+
+  if (section === 'shop') {
+    if (currentPage === 'feed') await loadShop();
+  } else {
+    await loadCategories();
+    if (currentPage === 'feed') await loadFeed();
+  }
+}
+
+function onCreateClick() {
+  if (!currentUser) return showAuth();
+  if (currentSection === 'shop') openShopCreate();
+  else switchPage('create');
+}
+
+// ============ SHOP ============
+let shopListings = [];
+
+async function loadShop() {
+  const q = new URLSearchParams();
+  if (searchQuery) q.set('search', searchQuery);
+  try {
+    shopListings = await api('/api/shop?' + q.toString());
+    renderShop();
+  } catch (e) {
+    document.getElementById('feed').innerHTML = '<div class="empty-state">Не удалось загрузить</div>';
+  }
+}
+
+function renderShop() {
+  const feed = document.getElementById('feed');
+  if (!shopListings.length) {
+    feed.innerHTML = '<div class="empty-state"><div class="empty-state-emoji">🛍</div>Пока пусто.<br>Опубликуй первое объявление!</div>';
+    return;
+  }
+  feed.innerHTML = shopListings.map(renderShopCard).join('');
+}
+
+function renderShopCard(l) {
+  const initial = (l.author || '?').charAt(0).toUpperCase();
+  const avCls = l.author_avatar ? 'has-image' : '';
+  const avStyle = l.author_avatar ? `style="background-image:url('${l.author_avatar}')"` : '';
+  const imgs = (l.images || []).slice(0, 5);
+  const single = imgs.length === 1 ? 'single' : '';
+  const imagesHtml = imgs.map(src => isVideoUrl(src)
+    ? `<video src="${src}" autoplay loop muted playsinline></video>`
+    : `<img src="${src}" alt="" loading="lazy">`).join('');
+  const isMine = currentUser && l.author.toLowerCase() === currentUser.username.toLowerCase();
+  const canDelete = isMine || (currentUser && currentUser.is_admin);
+  const priceStr = (l.price || 0).toLocaleString('ru-RU') + ' ₽';
+  return `
+    <article class="shop-card" data-id="${l.id}">
+      <div class="shop-images ${single}">${imagesHtml}</div>
+      <div class="shop-body">
+        <div class="shop-head">
+          <div class="shop-title">${escapeHtml(l.title)}</div>
+          <div class="shop-price">${priceStr}</div>
+        </div>
+        ${l.description ? `<div class="shop-desc">${escapeHtml(l.description)}</div>` : ''}
+        <div class="shop-author">
+          <div class="chat-avatar ${avCls}" ${avStyle} onclick="openUser('${escapeAttr(l.author)}')">${avCls ? '' : initial}</div>
+          <div class="shop-author-name" onclick="openUser('${escapeAttr(l.author)}')">${escapeHtml(l.author)}${verifiedBadge(l.author_verified)}</div>
+          <div class="shop-time">${formatTime(l.created_at)}</div>
+        </div>
+        <div class="shop-actions">
+          ${currentUser && !isMine ? `<button class="btn" onclick="openChat('${escapeAttr(l.author)}')" style="flex:1">💬 Написать</button>` : ''}
+          ${canDelete ? `<button class="btn btn-secondary" onclick="deleteShopListing('${l.id}')" style="${isMine && !currentUser.is_admin ? 'flex:1' : ''}">Удалить</button>` : ''}
+        </div>
+      </div>
+    </article>`;
+}
+
+async function deleteShopListing(id) {
+  if (!confirm('Удалить объявление?')) return;
+  try {
+    await api('/api/shop/' + id, { method: 'DELETE' });
+    shopListings = shopListings.filter(l => l.id !== id);
+    renderShop();
+  } catch (e) { alert(e.message); }
+}
+
+function openShopCreate() {
+  if (!currentUser) return showAuth();
+  document.getElementById('shopCreateOverlay').style.display = 'flex';
+  document.getElementById('shopCreateError').classList.remove('show');
+  document.getElementById('shopCreateForm').reset();
+  setTimeout(() => document.getElementById('shopTitle').focus(), 50);
+}
+
+function closeShopCreate() {
+  document.getElementById('shopCreateOverlay').style.display = 'none';
+}
+
+document.getElementById('shopCreateForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = document.getElementById('shopCreateError');
+  err.classList.remove('show');
+  const title = document.getElementById('shopTitle').value.trim();
+  const price = document.getElementById('shopPrice').value;
+  const desc = document.getElementById('shopDesc').value.trim();
+  const files = document.getElementById('shopImages').files;
+  if (!title) return showShopErr('Введи название');
+  if (price === '' || isNaN(parseInt(price, 10))) return showShopErr('Укажи цену');
+  if (!files.length) return showShopErr('Загрузи хотя бы один пример');
+  if (files.length > 5) return showShopErr('Не больше 5 файлов');
+
+  const fd = new FormData();
+  fd.append('title', title);
+  fd.append('price', price);
+  fd.append('description', desc);
+  for (const f of files) fd.append('images', f);
+
+  try {
+    await api('/api/shop', { method: 'POST', body: fd });
+    closeShopCreate();
+    if (currentSection !== 'shop') await switchSection('shop');
+    else await loadShop();
+  } catch (e) {
+    showShopErr(e.message);
+  }
+});
+
+function showShopErr(msg) {
+  const err = document.getElementById('shopCreateError');
+  err.textContent = msg;
+  err.classList.add('show');
 }
 
 // ============ AUTH ============
@@ -1050,7 +1226,10 @@ let searchTimer;
 document.getElementById('searchInput').addEventListener('input', e => {
   searchQuery = e.target.value;
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(loadFeed, 300);
+  searchTimer = setTimeout(() => {
+    if (currentSection === 'shop') loadShop();
+    else loadFeed();
+  }, 300);
 });
 
 // ============ CREATE POST ============
@@ -1785,6 +1964,16 @@ function connectSSE() {
   sseConnection.addEventListener('posts-cleared', () => {
     posts = [];
     if (currentPage === 'feed') renderFeed();
+  });
+  sseConnection.addEventListener('new-listing', () => {
+    if (currentSection === 'shop' && currentPage === 'feed') loadShop();
+  });
+  sseConnection.addEventListener('delete-listing', e => {
+    try {
+      const { id } = JSON.parse(e.data);
+      shopListings = shopListings.filter(l => l.id !== id);
+      if (currentSection === 'shop' && currentPage === 'feed') renderShop();
+    } catch {}
   });
   sseConnection.onerror = () => {
     // EventSource сам переподключается

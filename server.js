@@ -138,6 +138,18 @@ async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages (sender, receiver, created_at);
     CREATE INDEX IF NOT EXISTS idx_messages_receiver_unread ON messages (receiver) WHERE read_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS shop_listings (
+      id TEXT PRIMARY KEY,
+      author TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      price BIGINT NOT NULL,
+      images TEXT NOT NULL,
+      created_at BIGINT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_shop_created ON shop_listings(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_shop_author ON shop_listings(author);
   `);
   // Миграции: type на постах, kind на категориях (для обоев/аватарок)
   try { await pool.query("ALTER TABLE posts ADD COLUMN type TEXT DEFAULT 'wallpaper'"); } catch (e) {}
@@ -644,11 +656,13 @@ app.get('/api/users/:username/following', async (req, res) => {
 // ============ CHATS / MESSAGES ============
 async function canSendMessage(senderLc, receiverLc) {
   if (senderLc === receiverLc) return false;
-  // Можно писать если подписан на получателя ИЛИ уже есть переписка
+  // Можно писать если подписан на получателя ИЛИ уже есть переписка ИЛИ у получателя есть объявления в shop
   const follows = await one('SELECT 1 FROM follows WHERE follower = ? AND followed = ?', senderLc, receiverLc);
   if (follows) return true;
   const prior = await one('SELECT 1 FROM messages WHERE sender = ? AND receiver = ? LIMIT 1', receiverLc, senderLc);
-  return !!prior;
+  if (prior) return true;
+  const hasShop = await one('SELECT 1 FROM shop_listings WHERE LOWER(author) = ? LIMIT 1', receiverLc);
+  return !!hasShop;
 }
 
 // Список моих диалогов: последнее сообщение с каждым собеседником + непрочитанные
@@ -764,6 +778,96 @@ app.get('/api/chats-unread', authMiddleware, async (req, res) => {
   const me = req.user.username.toLowerCase();
   const c = (await one('SELECT COUNT(*)::int as c FROM messages WHERE receiver = ? AND read_at IS NULL', me)).c;
   res.json({ unread: c });
+});
+
+// ============ SHOP ============
+app.get('/api/shop', async (req, res) => {
+  try {
+    const { search = '', author } = req.query;
+    let sql = `SELECT l.*, u.is_verified as author_verified, u.avatar as author_avatar
+               FROM shop_listings l LEFT JOIN users u ON u.username = l.author
+               WHERE 1=1`;
+    const params = [];
+    if (author) {
+      sql += ' AND LOWER(l.author) = LOWER(?)';
+      params.push(author);
+    }
+    if (search) {
+      sql += ' AND (l.title ILIKE ? OR l.description ILIKE ? OR l.author ILIKE ?)';
+      const like = '%' + search + '%';
+      params.push(like, like, like);
+    }
+    sql += ' ORDER BY l.created_at DESC LIMIT 200';
+    const rows = await all(sql, ...params);
+    res.json(rows.map(r => ({
+      id: r.id,
+      author: r.author,
+      author_avatar: r.author_avatar,
+      author_verified: !!r.author_verified,
+      title: r.title,
+      description: r.description,
+      price: r.price,
+      images: JSON.parse(r.images || '[]'),
+      created_at: r.created_at
+    })));
+  } catch (e) {
+    console.error('GET /api/shop error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/shop', authMiddleware, upload.array('images', 5), async (req, res) => {
+  try {
+    if (!req.files || !req.files.length) return res.status(400).json({ error: 'Need at least 1 image' });
+
+    const title = (req.body.title || '').trim().slice(0, 80);
+    if (!title) return res.status(400).json({ error: 'Title required' });
+
+    const description = (req.body.description || '').trim().slice(0, 1000);
+    const price = parseInt(req.body.price, 10);
+    if (!Number.isFinite(price) || price < 0 || price > 10000000) {
+      return res.status(400).json({ error: 'Price must be 0–10 000 000' });
+    }
+
+    const images = req.files.map(f => '/uploads/' + f.filename);
+    const id = Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+    const created_at = Date.now();
+
+    await run(
+      `INSERT INTO shop_listings (id, author, title, description, price, images, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      id, req.user.username, title, description, price, JSON.stringify(images), created_at
+    );
+    sseBroadcast('new-listing', { id });
+    res.json({ id });
+  } catch (e) {
+    console.error('POST /api/shop error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/shop/:id', authMiddleware, async (req, res) => {
+  const listing = await one('SELECT author, images FROM shop_listings WHERE id = ?', req.params.id);
+  if (!listing) return res.status(404).json({ error: 'Not found' });
+
+  const me = await one('SELECT is_admin FROM users WHERE username = ?', req.user.username);
+  const isMine = listing.author.toLowerCase() === req.user.username.toLowerCase();
+  if (!isMine && !(me && me.is_admin)) return res.status(403).json({ error: 'Forbidden' });
+
+  // Удалим файлы
+  try {
+    const imgs = JSON.parse(listing.images || '[]');
+    imgs.forEach(p => {
+      if (p && p.startsWith('/uploads/')) {
+        const fp = path.join(UPLOADS_DIR, path.basename(p));
+        fs.promises.unlink(fp).catch(() => {});
+      }
+    });
+  } catch (e) {}
+
+  await run('DELETE FROM shop_listings WHERE id = ?', req.params.id);
+  sseBroadcast('delete-listing', { id: req.params.id });
+  res.json({ ok: true });
 });
 
 // ============ CATEGORIES ============
