@@ -47,9 +47,14 @@
 
   /* === SHOP === */
   .shop-card { background: var(--surface); border-radius: 16px; overflow: hidden; animation: slideIn 0.4s ease-out; }
-  .shop-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 2px; background: #000; max-height: 320px; overflow: hidden; }
-  .shop-images img, .shop-images video { width: 100%; height: 100%; min-height: 140px; max-height: 320px; object-fit: cover; cursor: pointer; }
-  .shop-images.single img, .shop-images.single video { max-height: 380px; min-height: 0; }
+  .shop-banner { background: #000; max-height: 380px; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+  .shop-banner img, .shop-banner video { width: 100%; height: auto; max-height: 380px; object-fit: cover; display: block; }
+  .shop-examples-overlay { position: fixed; inset: 0; background: rgba(15, 20, 25, 0.95); backdrop-filter: blur(10px); z-index: 1100; display: none; flex-direction: column; padding: 1rem; }
+  .shop-examples-overlay.show { display: flex; }
+  .shop-examples-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; max-width: 720px; margin: 0 auto; width: 100%; padding-bottom: 0.85rem; }
+  .shop-examples-title { font-size: 1.1rem; font-weight: 800; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .shop-examples-body { overflow-y: auto; max-width: 720px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 0.6rem; padding-bottom: 1rem; flex: 1; }
+  .shop-examples-body img, .shop-examples-body video { width: 100%; max-height: 80vh; object-fit: contain; border-radius: 12px; background: #000; }
   .shop-body { padding: 1rem 1.25rem 1.25rem; }
   .shop-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.5rem; }
   .shop-title { font-size: 1.05rem; font-weight: 700; flex: 1; line-height: 1.3; }
@@ -343,6 +348,15 @@
   </div>
 </div>
 
+<!-- SHOP EXAMPLES OVERLAY -->
+<div class="shop-examples-overlay" id="shopExamplesOverlay" onclick="if(event.target===this)closeShopExamples()">
+  <div class="shop-examples-head">
+    <div class="shop-examples-title" id="shopExamplesTitle">Примеры работ</div>
+    <button class="page-close" onclick="closeShopExamples()">×</button>
+  </div>
+  <div class="shop-examples-body" id="shopExamplesBody"></div>
+</div>
+
 <!-- SHOP CREATE MODAL -->
 <div class="modal-overlay" id="shopCreateOverlay" style="display:none" onclick="if(event.target===this)closeShopCreate()">
   <div class="modal-card">
@@ -363,9 +377,14 @@
         <textarea id="shopDesc" maxlength="1000" rows="4" placeholder="Что входит, сроки, контакты..."></textarea>
       </div>
       <div class="form-field">
-        <label>Примеры работ (до 5 файлов)</label>
-        <input type="file" id="shopImages" accept="image/*,video/mp4,video/webm" multiple required>
-        <div style="font-size:0.75rem;color:var(--text-dim);margin-top:0.4rem">PNG · JPG · WEBP · GIF · MP4 — до 30MB на файл</div>
+        <label>Баннер (обложка объявления)</label>
+        <input type="file" id="shopBanner" accept="image/*,video/mp4,video/webm" required>
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-top:0.4rem">Картинка/видео для главного экрана — обязательно</div>
+      </div>
+      <div class="form-field">
+        <label>Примеры работ (до 5 файлов, по желанию)</label>
+        <input type="file" id="shopImages" accept="image/*,video/mp4,video/webm" multiple>
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-top:0.4rem">Откроются в галерее по кнопке «Примеры»</div>
       </div>
       <button type="submit" class="auth-submit">Опубликовать</button>
       <button type="button" class="btn btn-secondary" onclick="closeShopCreate()" style="margin-top:0.5rem">Отмена</button>
@@ -661,17 +680,17 @@ function renderShopCard(l) {
   const initial = (l.author || '?').charAt(0).toUpperCase();
   const avCls = l.author_avatar ? 'has-image' : '';
   const avStyle = l.author_avatar ? `style="background-image:url('${l.author_avatar}')"` : '';
-  const imgs = (l.images || []).slice(0, 5);
-  const single = imgs.length === 1 ? 'single' : '';
-  const imagesHtml = imgs.map(src => isVideoUrl(src)
-    ? `<video src="${src}" autoplay loop muted playsinline></video>`
-    : `<img src="${src}" alt="" loading="lazy">`).join('');
+  const banner = l.banner || (l.images && l.images[0]) || '';
+  const bannerHtml = banner ? (isVideoUrl(banner)
+    ? `<video src="${banner}" autoplay loop muted playsinline></video>`
+    : `<img src="${banner}" alt="" loading="lazy">`) : '';
   const isMine = currentUser && l.author.toLowerCase() === currentUser.username.toLowerCase();
   const canDelete = isMine || (currentUser && currentUser.is_admin);
   const priceStr = (l.price || 0).toLocaleString('ru-RU') + ' ₽';
+  const exampleCount = (l.images || []).length;
   return `
     <article class="shop-card" data-id="${l.id}">
-      <div class="shop-images ${single}">${imagesHtml}</div>
+      <div class="shop-banner">${bannerHtml}</div>
       <div class="shop-body">
         <div class="shop-head">
           <div class="shop-title">${escapeHtml(l.title)}</div>
@@ -684,11 +703,31 @@ function renderShopCard(l) {
           <div class="shop-time">${formatTime(l.created_at)}</div>
         </div>
         <div class="shop-actions">
+          ${exampleCount ? `<button class="btn btn-secondary" onclick="openShopExamples('${l.id}')" style="flex:1">📷 Примеры (${exampleCount})</button>` : ''}
           ${currentUser && !isMine ? `<button class="btn" onclick="openChat('${escapeAttr(l.author)}')" style="flex:1">💬 Написать</button>` : ''}
-          ${canDelete ? `<button class="btn btn-secondary" onclick="deleteShopListing('${l.id}')" style="${isMine && !currentUser.is_admin ? 'flex:1' : ''}">Удалить</button>` : ''}
+          ${canDelete ? `<button class="btn btn-secondary" onclick="deleteShopListing('${l.id}')">Удалить</button>` : ''}
         </div>
       </div>
     </article>`;
+}
+
+function openShopExamples(id) {
+  const listing = shopListings.find(l => l.id === id);
+  if (!listing) return;
+  const imgs = listing.images || [];
+  if (!imgs.length) return;
+  const overlay = document.getElementById('shopExamplesOverlay');
+  const body = document.getElementById('shopExamplesBody');
+  document.getElementById('shopExamplesTitle').textContent = listing.title;
+  body.innerHTML = imgs.map(src => isVideoUrl(src)
+    ? `<video src="${src}" controls autoplay loop muted playsinline></video>`
+    : `<img src="${src}" alt="" loading="lazy">`).join('');
+  overlay.style.display = 'flex';
+  body.scrollTop = 0;
+}
+
+function closeShopExamples() {
+  document.getElementById('shopExamplesOverlay').style.display = 'none';
 }
 
 async function deleteShopListing(id) {
@@ -719,17 +758,19 @@ document.getElementById('shopCreateForm').addEventListener('submit', async e => 
   const title = document.getElementById('shopTitle').value.trim();
   const price = document.getElementById('shopPrice').value;
   const desc = document.getElementById('shopDesc').value.trim();
-  const files = document.getElementById('shopImages').files;
+  const bannerFile = document.getElementById('shopBanner').files[0];
+  const exampleFiles = document.getElementById('shopImages').files;
   if (!title) return showShopErr('Введи название');
   if (price === '' || isNaN(parseInt(price, 10))) return showShopErr('Укажи цену');
-  if (!files.length) return showShopErr('Загрузи хотя бы один пример');
-  if (files.length > 5) return showShopErr('Не больше 5 файлов');
+  if (!bannerFile) return showShopErr('Загрузи баннер');
+  if (exampleFiles.length > 5) return showShopErr('Не больше 5 примеров');
 
   const fd = new FormData();
   fd.append('title', title);
   fd.append('price', price);
   fd.append('description', desc);
-  for (const f of files) fd.append('images', f);
+  fd.append('banner', bannerFile);
+  for (const f of exampleFiles) fd.append('images', f);
 
   try {
     await api('/api/shop', { method: 'POST', body: fd });
