@@ -17,6 +17,10 @@
 
   /* === HEADER === */
   header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.9rem 1.5rem; position: sticky; top: 0; z-index: 80; display: flex; align-items: center; gap: 1rem; }
+  .chat-header-btn { background: var(--surface-2); border: 1px solid var(--border); width: 38px; height: 38px; border-radius: 50%; color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; position: relative; flex-shrink: 0; }
+  .chat-header-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .chat-header-btn .unread-dot { position: absolute; top: -2px; right: -2px; min-width: 18px; height: 18px; padding: 0 5px; background: var(--bad); color: #fff; border-radius: 999px; font-size: 0.65rem; font-weight: 800; display: none; align-items: center; justify-content: center; border: 2px solid var(--surface); }
+  .chat-header-btn .unread-dot.show { display: flex; }
   .logo { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; flex-shrink: 0; }
   .logo span { color: var(--accent); }
   .section-tabs { display: flex; gap: 0.5rem; margin-left: auto; }
@@ -26,6 +30,31 @@
     header { padding: 0.75rem 1rem; gap: 0.5rem; }
     .section-tab { font-size: 0.78rem; padding: 0.4rem 0.65rem; }
   }
+
+  /* === CHATS LIST === */
+  .chat-list { display: flex; flex-direction: column; gap: 0.25rem; }
+  .chat-row { display: flex; gap: 0.85rem; padding: 0.85rem; border-radius: 12px; cursor: pointer; align-items: center; }
+  .chat-row:hover { background: var(--surface-2); }
+  .chat-avatar { width: 48px; height: 48px; background: linear-gradient(135deg, var(--accent), var(--cool)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--bg); flex-shrink: 0; background-size: cover; background-position: center; font-size: 1.1rem; }
+  .chat-avatar.has-image { color: transparent; }
+  .chat-info { flex: 1; min-width: 0; }
+  .chat-row-name { font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 0.3rem; }
+  .chat-last { font-size: 0.85rem; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.15rem; }
+  .chat-last.bold { color: var(--text); font-weight: 600; }
+  .chat-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; flex-shrink: 0; }
+  .chat-time { font-size: 0.7rem; color: var(--text-dim); }
+  .chat-unread { background: var(--accent); color: var(--bg); font-size: 0.7rem; font-weight: 800; min-width: 20px; height: 20px; border-radius: 999px; padding: 0 6px; display: flex; align-items: center; justify-content: center; }
+
+  /* === CHAT VIEW === */
+  .chat-thread { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.5rem 0 1rem; }
+  .msg { max-width: 80%; padding: 0.55rem 0.85rem; border-radius: 16px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .msg-in { background: var(--surface-2); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg-out { background: var(--accent); color: var(--bg); align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg-time { font-size: 0.65rem; opacity: 0.6; margin-top: 0.2rem; text-align: right; }
+  .chat-input-wrap { position: sticky; bottom: 72px; background: var(--bg); padding: 0.65rem 0; display: flex; gap: 0.5rem; }
+  .chat-input { flex: 1; background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; color: var(--text); padding: 0.65rem 1rem; font-family: inherit; font-size: 0.95rem; resize: none; min-height: 42px; max-height: 120px; line-height: 1.4; }
+  .chat-send-btn { background: var(--accent); color: var(--bg); border: none; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; font-size: 1.15rem; flex-shrink: 0; }
+  .chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* === PAGES === */
   .page { display: none; max-width: 720px; margin: 0 auto; padding: 1rem 1.5rem; }
@@ -309,6 +338,10 @@
 </div>
 
 <header>
+  <button class="chat-header-btn" onclick="switchPage('chats')" title="Чаты">
+    💬
+    <span class="unread-dot" id="chatUnreadDot">0</span>
+  </button>
   <div class="logo">wallper<span>.</span></div>
   <div class="section-tabs">
     <button class="section-tab active" data-section="wallpaper" onclick="switchSection('wallpaper')">🖼 Обои</button>
@@ -410,6 +443,28 @@
 
 <!-- USER PAGE -->
 <div class="page" id="pageUser"></div>
+
+<!-- CHATS LIST PAGE -->
+<div class="page" id="pageChats">
+  <div class="page-header">
+    <button class="page-close" onclick="switchPage('feed')" style="margin-right:0.5rem">‹</button>
+    <div class="page-title">Чаты</div>
+  </div>
+  <div id="chatsListContainer"><div class="spinner"></div></div>
+</div>
+
+<!-- CHAT VIEW PAGE -->
+<div class="page" id="pageChat">
+  <div class="page-header">
+    <button class="page-close" onclick="switchPage('chats')" style="margin-right:0.5rem">‹</button>
+    <div class="page-title" id="chatTitle">—</div>
+  </div>
+  <div id="chatThreadContainer"></div>
+  <form id="chatForm" class="chat-input-wrap" style="display:none">
+    <textarea class="chat-input" id="chatInput" placeholder="Написать сообщение..." rows="1"></textarea>
+    <button type="submit" class="chat-send-btn" id="chatSendBtn">➤</button>
+  </form>
+</div>
 
 <!-- BOTTOM NAV -->
 <nav class="bottom-nav">
@@ -1300,7 +1355,11 @@ async function openUser(username) {
         <div class="profile-avatar ${avCls}" ${avStyle}>${avCls ? '' : escapeHtml(u.username.charAt(0).toUpperCase())}</div>
         <div class="profile-name">${escapeHtml(u.username)}${verifiedBadge(u.is_verified)}</div>
         <div class="profile-meta">С нами с ${new Date(u.created_at).toLocaleDateString('ru-RU', { year: 'numeric', month: 'long' })}</div>
-        ${currentUser ? `<button class="follow-btn" style="margin-top:1rem;padding:0.6rem 1.5rem;font-size:0.9rem" data-follow-author="${escapeAttr(u.username)}" onclick="toggleFollow(event, '${escapeAttr(u.username)}')">${followState ? 'Подписан' : 'Подписаться'}</button>` : ''}
+        ${currentUser ? `
+          <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+            <button class="follow-btn" style="padding:0.6rem 1.5rem;font-size:0.9rem" data-follow-author="${escapeAttr(u.username)}" onclick="toggleFollow(event, '${escapeAttr(u.username)}')">${followState ? 'Подписан' : 'Подписаться'}</button>
+            ${followState ? `<button class="follow-btn" style="padding:0.6rem 1.5rem;font-size:0.9rem;background:var(--surface-2);color:var(--text);border:1px solid var(--border)" onclick="openChat('${escapeAttr(u.username)}')">💬 Написать</button>` : ''}
+          </div>` : ''}
       </div>
       <div class="profile-stats">
         <div class="profile-stat"><div class="profile-stat-value">${formatVoteCount(u.posts)}</div><div class="profile-stat-label">Постов</div></div>
@@ -1618,6 +1677,7 @@ function switchPage(name) {
   if (name === 'feed') document.getElementById('navFeed').classList.add('active');
   if (name === 'profile') document.getElementById('navProfile').classList.add('active');
   if (name === 'profile') renderProfile();
+  if (name === 'chats') openChats();
   if (name === 'create') {
     renderCategoryPicker();
     if (currentUser) {
@@ -1689,7 +1749,15 @@ function applyCountsUpdate(u) {
 
 function connectSSE() {
   if (sseConnection) sseConnection.close();
-  sseConnection = new EventSource('/api/events');
+  const token = localStorage.getItem('token');
+  const url = '/api/events' + (token ? '?token=' + encodeURIComponent(token) : '');
+  sseConnection = new EventSource(url);
+  sseConnection.addEventListener('message', e => {
+    try {
+      const data = JSON.parse(e.data);
+      onIncomingMessage(data);
+    } catch {}
+  });
   sseConnection.addEventListener('update', e => {
     try { applyCountsUpdate(JSON.parse(e.data)); } catch {}
   });
@@ -1723,6 +1791,187 @@ function connectSSE() {
   };
 }
 
+// ============ CHATS ============
+let currentChatPeer = null; // lowercase username of open chat
+let chatsList = [];
+
+function formatChatTime(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+  const diffDays = (now - d) / 86400000;
+  if (diffDays < 7) return ['вс','пн','вт','ср','чт','пт','сб'][d.getDay()];
+  return d.getDate() + '.' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function updateChatUnreadDot(count) {
+  const dot = document.getElementById('chatUnreadDot');
+  if (!dot) return;
+  if (count > 0) {
+    dot.textContent = count > 99 ? '99+' : count;
+    dot.classList.add('show');
+  } else {
+    dot.classList.remove('show');
+  }
+}
+
+async function refreshUnreadCount() {
+  if (!currentUser) { updateChatUnreadDot(0); return; }
+  try {
+    const r = await api('/api/chats-unread');
+    updateChatUnreadDot(r.unread);
+  } catch (e) {}
+}
+
+async function openChats() {
+  if (!currentUser) return showAuth();
+  const cont = document.getElementById('chatsListContainer');
+  cont.innerHTML = '<div class="spinner"></div>';
+  try {
+    chatsList = await api('/api/chats');
+    renderChatsList();
+  } catch (e) {
+    cont.innerHTML = '<div class="empty-state">Не удалось загрузить чаты</div>';
+  }
+}
+
+function renderChatsList() {
+  const cont = document.getElementById('chatsListContainer');
+  if (!chatsList.length) {
+    cont.innerHTML = '<div class="empty-state"><div class="empty-state-emoji">💬</div>Чатов пока нет.<br>Подпишись на кого-нибудь и напиши первым!</div>';
+    return;
+  }
+  cont.innerHTML = '<div class="chat-list">' + chatsList.map(c => {
+    const meLc = currentUser.username.toLowerCase();
+    const peerLc = c.peer.toLowerCase();
+    const lastPrefix = (c.last_sender && c.last_sender.toLowerCase() === meLc) ? 'Ты: ' : '';
+    const initial = c.peer.charAt(0).toUpperCase();
+    const avCls = c.peer_avatar ? 'has-image' : '';
+    const avStyle = c.peer_avatar ? `style="background-image:url('${c.peer_avatar}')"` : '';
+    const unread = c.unread > 0 ? `<div class="chat-unread">${c.unread > 99 ? '99+' : c.unread}</div>` : '';
+    const isUnread = c.unread > 0;
+    return `
+      <div class="chat-row" onclick="openChat('${escapeAttr(c.peer)}')">
+        <div class="chat-avatar ${avCls}" ${avStyle}>${avCls ? '' : initial}</div>
+        <div class="chat-info">
+          <div class="chat-row-name">${escapeHtml(c.peer)}${verifiedBadge(c.peer_verified)}</div>
+          <div class="chat-last ${isUnread ? 'bold' : ''}">${escapeHtml(lastPrefix + c.last_text)}</div>
+        </div>
+        <div class="chat-meta">
+          <div class="chat-time">${formatChatTime(c.last_at)}</div>
+          ${unread}
+        </div>
+      </div>`;
+  }).join('') + '</div>';
+}
+
+async function openChat(peerUsername) {
+  if (!currentUser) return showAuth();
+  currentChatPeer = peerUsername.toLowerCase();
+  switchPage('chat');
+  document.getElementById('chatTitle').textContent = peerUsername;
+  const cont = document.getElementById('chatThreadContainer');
+  cont.innerHTML = '<div class="spinner"></div>';
+  try {
+    const data = await api('/api/chats/' + encodeURIComponent(peerUsername));
+    document.getElementById('chatTitle').innerHTML = escapeHtml(data.peer) + verifiedBadge(data.peer_verified);
+    renderChatThread(data.messages);
+    const form = document.getElementById('chatForm');
+    if (data.can_write) {
+      form.style.display = 'flex';
+    } else {
+      form.style.display = 'none';
+      cont.innerHTML += '<div class="empty-state" style="padding:1rem">Подпишись на @' + escapeHtml(data.peer) + ', чтобы написать первым.</div>';
+    }
+    refreshUnreadCount();
+  } catch (e) {
+    cont.innerHTML = '<div class="empty-state">Ошибка загрузки чата</div>';
+  }
+}
+
+function renderChatThread(messages) {
+  const cont = document.getElementById('chatThreadContainer');
+  const meLc = currentUser.username.toLowerCase();
+  cont.innerHTML = '<div class="chat-thread" id="chatThread">' + messages.map(m => {
+    const out = m.sender.toLowerCase() === meLc;
+    return `<div class="msg ${out ? 'msg-out' : 'msg-in'}">${escapeHtml(m.text)}<div class="msg-time">${formatChatTime(m.created_at)}</div></div>`;
+  }).join('') + '</div>';
+  // Скролл вниз
+  setTimeout(() => {
+    const thread = document.getElementById('chatThread');
+    if (thread) thread.scrollIntoView({ block: 'end' });
+    window.scrollTo({ top: document.body.scrollHeight });
+  }, 0);
+}
+
+function appendChatMessage(m) {
+  const thread = document.getElementById('chatThread');
+  if (!thread) return;
+  const meLc = currentUser.username.toLowerCase();
+  const out = m.sender.toLowerCase() === meLc;
+  const div = document.createElement('div');
+  div.className = 'msg ' + (out ? 'msg-out' : 'msg-in');
+  div.innerHTML = escapeHtml(m.text) + `<div class="msg-time">${formatChatTime(m.created_at)}</div>`;
+  thread.appendChild(div);
+  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+}
+
+document.getElementById('chatForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!currentChatPeer) return;
+  const inp = document.getElementById('chatInput');
+  const text = inp.value.trim();
+  if (!text) return;
+  const btn = document.getElementById('chatSendBtn');
+  btn.disabled = true;
+  try {
+    await api('/api/chats/' + encodeURIComponent(currentChatPeer), { method: 'POST', body: { text } });
+    inp.value = '';
+    inp.style.height = '';
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    btn.disabled = false;
+    inp.focus();
+  }
+});
+
+document.getElementById('chatInput').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(120, this.scrollHeight) + 'px';
+});
+
+document.getElementById('chatInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('chatForm').dispatchEvent(new Event('submit'));
+  }
+});
+
+function onIncomingMessage(data) {
+  const { message } = data;
+  if (!message || !currentUser) return;
+  const meLc = currentUser.username.toLowerCase();
+  const peerOfMsg = message.sender.toLowerCase() === meLc ? message.receiver.toLowerCase() : message.sender.toLowerCase();
+  // Если открыт именно этот чат — добавляем в DOM и помечаем прочитанным
+  if (currentPage === 'chat' && currentChatPeer === peerOfMsg) {
+    appendChatMessage(message);
+    // Помечаем как прочитанное на сервере (без перерисовки)
+    if (message.sender.toLowerCase() !== meLc) {
+      fetch('/api/chats/' + encodeURIComponent(data.from), {
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+      }).catch(() => {});
+    }
+  } else {
+    refreshUnreadCount();
+  }
+  // Если открыт список чатов — обновим
+  if (currentPage === 'chats') {
+    openChats();
+  }
+}
+
 // ============ INIT ============
 (async function init() {
   await loadCategories();
@@ -1731,8 +1980,10 @@ function connectSSE() {
   else hideAuth();
   await loadFeed();
   connectSSE();
+  refreshUnreadCount();
   // Fallback: на всякий случай раз в 2 минуты — если SSE отвалится без error
   setInterval(() => { if (currentPage === 'feed' && document.visibilityState === 'visible') loadFeed(); }, 120000);
+  setInterval(refreshUnreadCount, 60000);
 })();
 </script>
 </body>

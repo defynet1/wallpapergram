@@ -127,6 +127,17 @@ async function initDb() {
       PRIMARY KEY (post_id, viewer)
     );
     CREATE INDEX IF NOT EXISTS idx_views_post ON views(post_id);
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      sender TEXT NOT NULL,
+      receiver TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at BIGINT NOT NULL,
+      read_at BIGINT
+    );
+    CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages (sender, receiver, created_at);
+    CREATE INDEX IF NOT EXISTS idx_messages_receiver_unread ON messages (receiver) WHERE read_at IS NULL;
   `);
   // Миграции: type на постах, kind на категориях (для обоев/аватарок)
   try { await pool.query("ALTER TABLE posts ADD COLUMN type TEXT DEFAULT 'wallpaper'"); } catch (e) {}
@@ -159,11 +170,23 @@ function isAnimated(mimetype) {
 
 // ============ SSE (REALTIME) ============
 const sseClients = new Set();
+const userSseClients = new Map(); // username (lowercase) → Set<res>
 
 function sseBroadcast(event, data) {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const res of sseClients) {
-    try { res.write(payload); } catch (e) { /* клиент уже отвалился */ }
+    try { res.write(payload); } catch (e) {}
+  }
+}
+
+function sseSendToUser(username, event, data) {
+  if (!username) return;
+  const key = username.toLowerCase();
+  const set = userSseClients.get(key);
+  if (!set) return;
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of set) {
+    try { res.write(payload); } catch (e) {}
   }
 }
 
@@ -235,6 +258,13 @@ async function adminOnly(req, res, next) {
 
 // ============ SSE ENDPOINT ============
 app.get('/api/events', (req, res) => {
+  // Авторизация по токену в URL (EventSource не умеет кастомные заголовки)
+  let username = null;
+  const token = req.query.token;
+  if (token) {
+    try { username = jwt.verify(token, JWT_SECRET).username; } catch (e) {}
+  }
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
@@ -247,9 +277,23 @@ app.get('/api/events', (req, res) => {
   }, 25000);
 
   sseClients.add(res);
+  let userKey = null;
+  if (username) {
+    userKey = username.toLowerCase();
+    if (!userSseClients.has(userKey)) userSseClients.set(userKey, new Set());
+    userSseClients.get(userKey).add(res);
+  }
+
   req.on('close', () => {
     clearInterval(keepalive);
     sseClients.delete(res);
+    if (userKey) {
+      const set = userSseClients.get(userKey);
+      if (set) {
+        set.delete(res);
+        if (!set.size) userSseClients.delete(userKey);
+      }
+    }
   });
 });
 
@@ -595,6 +639,131 @@ app.get('/api/users/:username/following', async (req, res) => {
     WHERE f.follower = ? ORDER BY f.created_at DESC LIMIT 200
   `, req.params.username.toLowerCase());
   res.json(rows);
+});
+
+// ============ CHATS / MESSAGES ============
+async function canSendMessage(senderLc, receiverLc) {
+  if (senderLc === receiverLc) return false;
+  // Можно писать если подписан на получателя ИЛИ уже есть переписка
+  const follows = await one('SELECT 1 FROM follows WHERE follower = ? AND followed = ?', senderLc, receiverLc);
+  if (follows) return true;
+  const prior = await one('SELECT 1 FROM messages WHERE sender = ? AND receiver = ? LIMIT 1', receiverLc, senderLc);
+  return !!prior;
+}
+
+// Список моих диалогов: последнее сообщение с каждым собеседником + непрочитанные
+app.get('/api/chats', authMiddleware, async (req, res) => {
+  try {
+    const me = req.user.username.toLowerCase();
+    const latest = await all(`
+      SELECT DISTINCT ON (peer) peer, id, sender, receiver, text, created_at, read_at
+      FROM (
+        SELECT CASE WHEN sender = ? THEN receiver ELSE sender END as peer,
+               id, sender, receiver, text, created_at, read_at
+        FROM messages WHERE sender = ? OR receiver = ?
+      ) sub
+      ORDER BY peer, created_at DESC
+    `, me, me, me);
+
+    // Сортируем по времени и подгружаем юзер-инфу
+    latest.sort((a, b) => b.created_at - a.created_at);
+    const result = await Promise.all(latest.map(async m => {
+      const u = await one('SELECT username, avatar, is_verified FROM users WHERE LOWER(username) = ?', m.peer);
+      const unread = (await one(
+        'SELECT COUNT(*)::int as c FROM messages WHERE sender = ? AND receiver = ? AND read_at IS NULL',
+        m.peer, me
+      )).c;
+      return {
+        peer: u ? u.username : m.peer,
+        peer_avatar: u ? u.avatar : null,
+        peer_verified: u ? !!u.is_verified : false,
+        last_text: m.text,
+        last_at: m.created_at,
+        last_sender: m.sender,
+        unread
+      };
+    }));
+    res.json(result);
+  } catch (e) {
+    console.error('GET /api/chats error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// История диалога с конкретным юзером (и помечает входящие как прочитанные)
+app.get('/api/chats/:username', authMiddleware, async (req, res) => {
+  try {
+    const me = req.user.username.toLowerCase();
+    const peer = req.params.username.toLowerCase();
+    if (me === peer) return res.status(400).json({ error: 'Self chat not allowed' });
+
+    const rows = await all(`
+      SELECT id, sender, receiver, text, created_at, read_at FROM messages
+      WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
+      ORDER BY created_at ASC LIMIT 500
+    `, me, peer, peer, me);
+
+    // Помечаем входящие как прочитанные
+    await run(
+      'UPDATE messages SET read_at = ? WHERE sender = ? AND receiver = ? AND read_at IS NULL',
+      Date.now(), peer, me
+    );
+
+    const u = await one('SELECT username, avatar, is_verified FROM users WHERE LOWER(username) = ?', peer);
+    const canWrite = await canSendMessage(me, peer);
+    res.json({
+      peer: u ? u.username : req.params.username,
+      peer_avatar: u ? u.avatar : null,
+      peer_verified: u ? !!u.is_verified : false,
+      can_write: canWrite,
+      messages: rows
+    });
+  } catch (e) {
+    console.error('GET /api/chats/:user error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Отправить сообщение
+app.post('/api/chats/:username', authMiddleware, async (req, res) => {
+  try {
+    const me = req.user.username.toLowerCase();
+    const peer = req.params.username.toLowerCase();
+    if (me === peer) return res.status(400).json({ error: 'Self chat not allowed' });
+
+    const text = (req.body.text || '').trim().slice(0, 2000);
+    if (!text) return res.status(400).json({ error: 'Empty message' });
+
+    const peerUser = await one('SELECT username FROM users WHERE LOWER(username) = ?', peer);
+    if (!peerUser) return res.status(404).json({ error: 'User not found' });
+
+    if (!(await canSendMessage(me, peer))) {
+      return res.status(403).json({ error: 'Подпишись на этого юзера, чтобы написать ему' });
+    }
+
+    const id = Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+    const created_at = Date.now();
+    await run(
+      'INSERT INTO messages (id, sender, receiver, text, created_at) VALUES (?, ?, ?, ?, ?)',
+      id, me, peer, text, created_at
+    );
+
+    const message = { id, sender: me, receiver: peer, text, created_at, read_at: null };
+    // Пушим обоим в реалтайме
+    sseSendToUser(peer, 'message', { message, from: req.user.username });
+    sseSendToUser(me, 'message', { message, from: req.user.username });
+    res.json(message);
+  } catch (e) {
+    console.error('POST /api/chats/:user error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Счётчик непрочитанных
+app.get('/api/chats-unread', authMiddleware, async (req, res) => {
+  const me = req.user.username.toLowerCase();
+  const c = (await one('SELECT COUNT(*)::int as c FROM messages WHERE receiver = ? AND read_at IS NULL', me)).c;
+  res.json({ unread: c });
 });
 
 // ============ CATEGORIES ============
