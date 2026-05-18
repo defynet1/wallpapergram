@@ -16,11 +16,14 @@
   a { color: var(--accent); }
 
   /* === HEADER === */
-  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.9rem 1.5rem; position: sticky; top: 0; z-index: 80; display: flex; align-items: center; gap: 1rem; }
-  .chat-header-btn { background: var(--surface-2); border: 1px solid var(--border); width: 38px; height: 38px; border-radius: 50%; color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; position: relative; flex-shrink: 0; }
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.6rem 1.5rem; position: sticky; top: 0; z-index: 80; display: flex; align-items: center; gap: 1rem; }
+  .header-left { display: flex; flex-direction: column; align-items: stretch; gap: 0.25rem; flex-shrink: 0; }
+  .chat-header-btn { background: var(--surface-2); border: 1px solid var(--border); width: 38px; height: 38px; border-radius: 50%; color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; position: relative; flex-shrink: 0; align-self: center; }
   .chat-header-btn:hover { border-color: var(--accent); color: var(--accent); }
   .chat-header-btn .unread-dot { position: absolute; top: -2px; right: -2px; min-width: 18px; height: 18px; padding: 0 5px; background: var(--bad); color: #fff; border-radius: 999px; font-size: 0.65rem; font-weight: 800; display: none; align-items: center; justify-content: center; border: 2px solid var(--surface); }
   .chat-header-btn .unread-dot.show { display: flex; }
+  .coins-badge { background: linear-gradient(135deg, #ffd700, #ff8c00); color: #1a1a00; font-weight: 800; font-size: 0.7rem; padding: 0.2rem 0.5rem; border-radius: 999px; display: none; align-items: center; gap: 0.2rem; line-height: 1; min-width: 38px; justify-content: center; }
+  .coins-badge.show { display: inline-flex; }
   .logo { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; flex-shrink: 0; }
   .logo span { color: var(--accent); }
   .section-tabs { display: flex; gap: 0.5rem; margin-left: auto; }
@@ -369,7 +372,18 @@
         <input type="text" id="shopTitle" maxlength="80" placeholder="Например: Делаю аватарки на заказ" required>
       </div>
       <div class="form-field">
-        <label>Цена в ₽</label>
+        <label>Валюта</label>
+        <div style="display:flex; gap:0.5rem">
+          <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:0.6rem 0.85rem;">
+            <input type="radio" name="shopCurrency" value="rub" checked> ₽ Рубли
+          </label>
+          <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer; flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:0.6rem 0.85rem;">
+            <input type="radio" name="shopCurrency" value="coins"> 🪙 Монеты
+          </label>
+        </div>
+      </div>
+      <div class="form-field">
+        <label>Цена</label>
         <input type="number" id="shopPrice" min="0" max="10000000" placeholder="500" required>
       </div>
       <div class="form-field">
@@ -404,10 +418,13 @@
 </div>
 
 <header>
-  <button class="chat-header-btn" onclick="switchPage('chats')" title="Чаты">
-    💬
-    <span class="unread-dot" id="chatUnreadDot">0</span>
-  </button>
+  <div class="header-left">
+    <button class="chat-header-btn" onclick="switchPage('chats')" title="Чаты">
+      💬
+      <span class="unread-dot" id="chatUnreadDot">0</span>
+    </button>
+    <div class="coins-badge" id="coinsBadge" title="Твои монеты">🪙 0</div>
+  </div>
   <div class="logo">wallper<span>.</span></div>
   <div class="section-tabs">
     <button class="section-tab active" data-section="wallpaper" onclick="switchSection('wallpaper')">🖼 Обои</button>
@@ -691,8 +708,10 @@ function renderShopCard(l) {
     : `<img src="${banner}" alt="" loading="lazy">`) : '';
   const isMine = currentUser && l.author.toLowerCase() === currentUser.username.toLowerCase();
   const canDelete = isMine || (currentUser && currentUser.is_admin);
-  const priceStr = (l.price || 0).toLocaleString('ru-RU') + ' ₽';
+  const currency = l.currency || 'rub';
+  const priceStr = (l.price || 0).toLocaleString('ru-RU') + (currency === 'coins' ? ' 🪙' : ' ₽');
   const exampleCount = (l.images || []).length;
+  const canBuyCoins = currency === 'coins' && currentUser && !isMine;
   return `
     <article class="shop-card" data-id="${l.id}">
       <div class="shop-banner">${bannerHtml}</div>
@@ -709,7 +728,8 @@ function renderShopCard(l) {
         </div>
         <div class="shop-actions">
           ${exampleCount ? `<button class="btn btn-secondary" onclick="openShopExamples('${l.id}')" style="flex:1">📷 Примеры (${exampleCount})</button>` : ''}
-          ${currentUser && !isMine ? `<button class="btn" onclick="openChat('${escapeAttr(l.author)}')" style="flex:1">💬 Написать</button>` : ''}
+          ${canBuyCoins ? `<button class="btn" onclick="buyShopListing('${l.id}')" style="flex:1; background:linear-gradient(135deg,#ffd700,#ff8c00); color:#1a1a00">🪙 Купить за ${l.price}</button>` : ''}
+          ${currentUser && !isMine ? `<button class="btn ${canBuyCoins ? 'btn-secondary' : ''}" onclick="openChat('${escapeAttr(l.author)}')" style="flex:1">💬 Написать</button>` : ''}
           ${canDelete ? `<button class="btn btn-secondary" onclick="deleteShopListing('${l.id}')">Удалить</button>` : ''}
         </div>
       </div>
@@ -733,6 +753,24 @@ function openShopExamples(id) {
 
 function closeShopExamples() {
   document.getElementById('shopExamplesOverlay').style.display = 'none';
+}
+
+async function buyShopListing(id) {
+  if (!currentUser) return showAuth();
+  const l = shopListings.find(x => x.id === id);
+  if (!l) return;
+  const myCoins = currentUser.coins || 0;
+  if (myCoins < l.price) {
+    return alert(`Не хватает монет. У тебя ${myCoins} 🪙, нужно ${l.price} 🪙`);
+  }
+  if (!confirm(`Купить «${l.title}» за ${l.price} 🪙?\nУ тебя останется ${myCoins - l.price} 🪙.`)) return;
+  try {
+    const r = await api('/api/shop/' + id + '/buy', { method: 'POST' });
+    currentUser.coins = r.coins;
+    renderCoinsBadge();
+    // Автоматически откроем чат с продавцом — там уже будет сообщение о покупке
+    openChat(r.peer);
+  } catch (e) { alert(e.message); }
 }
 
 async function deleteShopListing(id) {
@@ -770,10 +808,13 @@ document.getElementById('shopCreateForm').addEventListener('submit', async e => 
   if (!bannerFile) return showShopErr('Загрузи баннер');
   if (exampleFiles.length > 5) return showShopErr('Не больше 5 примеров');
 
+  const currency = document.querySelector('input[name="shopCurrency"]:checked').value;
+
   const fd = new FormData();
   fd.append('title', title);
   fd.append('price', price);
   fd.append('description', desc);
+  fd.append('currency', currency);
   fd.append('banner', bannerFile);
   for (const f of exampleFiles) fd.append('images', f);
 
@@ -829,13 +870,36 @@ async function loadCurrentUser() {
   if (!token) return null;
   try {
     currentUser = await api('/api/me');
+    renderCoinsBadge();
     return currentUser;
   } catch (e) {
     token = null;
     localStorage.removeItem('token');
     currentUser = null;
+    renderCoinsBadge();
     return null;
   }
+}
+
+function renderCoinsBadge() {
+  const badge = document.getElementById('coinsBadge');
+  if (!badge) return;
+  if (!currentUser) {
+    badge.classList.remove('show');
+    return;
+  }
+  const n = currentUser.coins || 0;
+  badge.textContent = '🪙 ' + n.toLocaleString('ru-RU');
+  badge.classList.add('show');
+}
+
+async function refreshCoins() {
+  if (!currentUser) return;
+  try {
+    const r = await api('/api/me/coins');
+    currentUser.coins = r.coins;
+    renderCoinsBadge();
+  } catch (e) {}
 }
 
 function logout() {
@@ -1694,6 +1758,14 @@ async function openAdmin() {
       </div>
 
       <div class="admin-section">
+        <div class="admin-section-title">🪙 Монеты</div>
+        <div class="admin-tool"><label>Кому:</label><select id="adminCoinsTarget">${userOpts}</select></div>
+        <div class="admin-tool"><label>Сколько:</label><input type="number" id="adminCoinsAmount" value="100" placeholder="+100 или -50"></div>
+        <button class="admin-btn" onclick="adminGiveCoins()">Применить (минус — отнять)</button>
+        <div class="admin-result" id="adminCoinsResult"></div>
+      </div>
+
+      <div class="admin-section">
         <div class="admin-section-title">⚙️ Прочее</div>
         <button class="admin-btn" onclick="adminRevokeSelf()" style="background:var(--surface-2);color:var(--text-dim);border:1px solid var(--border)">Отказаться от прав админа</button>
       </div>
@@ -1880,6 +1952,20 @@ async function adminClearAll() {
     closeAdmin();
     loadFeed();
   } catch (e) { alert(e.message); }
+}
+
+async function adminGiveCoins() {
+  const username = document.getElementById('adminCoinsTarget').value;
+  const amount = parseInt(document.getElementById('adminCoinsAmount').value, 10);
+  if (!username || !Number.isFinite(amount)) return setAdminResult('adminCoinsResult', 'Заполни поля', true);
+  try {
+    const r = await api('/api/admin/coins/' + encodeURIComponent(username), { method: 'POST', body: { amount } });
+    setAdminResult('adminCoinsResult', `${username}: новый баланс ${r.coins} 🪙`, false);
+    if (currentUser && username.toLowerCase() === currentUser.username.toLowerCase()) {
+      currentUser.coins = r.coins;
+      renderCoinsBadge();
+    }
+  } catch (e) { setAdminResult('adminCoinsResult', e.message, true); }
 }
 
 async function adminRevokeSelf() {
@@ -2188,6 +2274,10 @@ function onIncomingMessage(data) {
   const { message } = data;
   if (!message || !currentUser) return;
   const meLc = currentUser.username.toLowerCase();
+  // Покупка от другого юзера могла увеличить мой баланс
+  if (message.text && message.text.startsWith('🛍 Купил') && message.receiver.toLowerCase() === meLc) {
+    refreshCoins();
+  }
   const peerOfMsg = message.sender.toLowerCase() === meLc ? message.receiver.toLowerCase() : message.sender.toLowerCase();
   // Если открыт именно этот чат — добавляем в DOM и помечаем прочитанным
   if (currentPage === 'chat' && currentChatPeer === peerOfMsg) {

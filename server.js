@@ -153,6 +153,9 @@ async function initDb() {
   `);
   // Миграция: баннер у объявлений
   try { await pool.query("ALTER TABLE shop_listings ADD COLUMN banner TEXT"); } catch (e) {}
+  // Миграция: монеты у юзеров, валюта у объявлений
+  try { await pool.query("ALTER TABLE users ADD COLUMN coins BIGINT DEFAULT 0"); } catch (e) {}
+  try { await pool.query("ALTER TABLE shop_listings ADD COLUMN currency TEXT DEFAULT 'rub'"); } catch (e) {}
   // Миграции: type на постах, kind на категориях (для обоев/аватарок)
   try { await pool.query("ALTER TABLE posts ADD COLUMN type TEXT DEFAULT 'wallpaper'"); } catch (e) {}
   try { await pool.query("ALTER TABLE categories ADD COLUMN kind TEXT DEFAULT 'wallpaper'"); } catch (e) {}
@@ -326,7 +329,7 @@ app.post('/api/register', async (req, res) => {
     if (exists) return res.status(409).json({ error: 'Username taken' });
 
     const hash = await bcrypt.hash(password, 10);
-    await run('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)', username, hash, Date.now());
+    await run('INSERT INTO users (username, password_hash, created_at, coins) VALUES (?, ?, ?, 100)', username, hash, Date.now());
 
     const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, username });
@@ -356,9 +359,15 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.get('/api/me', authMiddleware, async (req, res) => {
-  const u = await one('SELECT username, avatar, is_admin, is_verified, created_at FROM users WHERE username = ?', req.user.username);
+  const u = await one('SELECT username, avatar, is_admin, is_verified, created_at, COALESCE(coins, 0)::int as coins FROM users WHERE username = ?', req.user.username);
   if (!u) return res.status(404).json({ error: 'User not found' });
   res.json(u);
+});
+
+// Текущий баланс монет (для лёгких опросов)
+app.get('/api/me/coins', authMiddleware, async (req, res) => {
+  const u = await one('SELECT COALESCE(coins, 0)::int as coins FROM users WHERE username = ?', req.user.username);
+  res.json({ coins: u ? u.coins : 0 });
 });
 
 // ============ USER ROUTES ============
@@ -811,6 +820,7 @@ app.get('/api/shop', async (req, res) => {
         title: r.title,
         description: r.description,
         price: r.price,
+        currency: r.currency || 'rub',
         banner: r.banner || images[0] || null, // старые объявления — fallback на первую картинку
         images,
         created_at: r.created_at
@@ -838,6 +848,7 @@ app.post('/api/shop', authMiddleware, upload.fields([
     if (!Number.isFinite(price) || price < 0 || price > 10000000) {
       return res.status(400).json({ error: 'Price must be 0–10 000 000' });
     }
+    const currency = req.body.currency === 'coins' ? 'coins' : 'rub';
 
     const banner = '/uploads/' + bannerFile.filename;
     const imageFiles = (req.files && req.files.images) || [];
@@ -847,14 +858,66 @@ app.post('/api/shop', authMiddleware, upload.fields([
     const created_at = Date.now();
 
     await run(
-      `INSERT INTO shop_listings (id, author, title, description, price, images, banner, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      id, req.user.username, title, description, price, JSON.stringify(images), banner, created_at
+      `INSERT INTO shop_listings (id, author, title, description, price, images, banner, created_at, currency)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, req.user.username, title, description, price, JSON.stringify(images), banner, created_at, currency
     );
     sseBroadcast('new-listing', { id });
     res.json({ id });
   } catch (e) {
     console.error('POST /api/shop error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/shop/:id/buy', authMiddleware, async (req, res) => {
+  try {
+    const me = req.user.username;
+    const meLc = me.toLowerCase();
+    const listing = await one('SELECT * FROM shop_listings WHERE id = ?', req.params.id);
+    if (!listing) return res.status(404).json({ error: 'Not found' });
+    if ((listing.currency || 'rub') !== 'coins') return res.status(400).json({ error: 'Это объявление в ₽ — нельзя оплатить монетами' });
+    if (listing.author.toLowerCase() === meLc) return res.status(400).json({ error: 'Своё объявление покупать нельзя' });
+
+    const price = Number(listing.price) || 0;
+    const sellerLc = listing.author.toLowerCase();
+    const msgId = Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+    const ts = Date.now();
+    const msgText = `🛍 Купил(а) «${listing.title}» за ${price} 🪙`;
+
+    let newBalance = null;
+    let messageRow = null;
+    try {
+      await withTx(async (client) => {
+        const r = await client.query(
+          'UPDATE users SET coins = coins - $1 WHERE LOWER(username) = $2 AND coins >= $1 RETURNING coins',
+          [price, meLc]
+        );
+        if (!r.rowCount) throw new Error('Недостаточно монет');
+        newBalance = parseInt(r.rows[0].coins, 10);
+        await client.query(
+          'UPDATE users SET coins = COALESCE(coins, 0) + $1 WHERE LOWER(username) = $2',
+          [price, sellerLc]
+        );
+        await client.query(
+          'INSERT INTO messages (id, sender, receiver, text, created_at) VALUES ($1, $2, $3, $4, $5)',
+          [msgId, meLc, sellerLc, msgText, ts]
+        );
+        messageRow = { id: msgId, sender: meLc, receiver: sellerLc, text: msgText, created_at: ts, read_at: null };
+      });
+    } catch (e) {
+      if (e.message === 'Недостаточно монет') return res.status(402).json({ error: e.message });
+      throw e;
+    }
+
+    // Реалтайм-уведомления участникам
+    if (messageRow) {
+      sseSendToUser(sellerLc, 'message', { message: messageRow, from: me });
+      sseSendToUser(meLc, 'message', { message: messageRow, from: me });
+    }
+    res.json({ ok: true, coins: newBalance, peer: listing.author });
+  } catch (e) {
+    console.error('POST /api/shop/:id/buy error:', e);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -1113,6 +1176,25 @@ app.delete('/api/admin/bot-votes/:postId', authMiddleware, adminOnly, async (req
   );
   sseBroadcast('update', await postCounts(req.params.postId));
   res.json({ removed: result.changes });
+});
+
+// Выдать/отнять монеты юзеру (отрицательное значение = отнять)
+app.post('/api/admin/coins/:username', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const amount = parseInt(req.body.amount, 10);
+    if (!Number.isFinite(amount)) return res.status(400).json({ error: 'Bad amount' });
+    const user = await one('SELECT username FROM users WHERE LOWER(username) = LOWER(?)', req.params.username);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const r = await pool.query(
+      'UPDATE users SET coins = GREATEST(0, COALESCE(coins, 0) + $1) WHERE LOWER(username) = LOWER($2) RETURNING coins',
+      [amount, req.params.username]
+    );
+    res.json({ ok: true, coins: parseInt(r.rows[0].coins, 10) });
+  } catch (e) {
+    console.error('admin coins error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 app.delete('/api/admin/self', authMiddleware, adminOnly, async (req, res) => {
