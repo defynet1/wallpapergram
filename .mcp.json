@@ -2,7 +2,7 @@
   "mcpServers": {
     "playwright": {
       "command": "C:\\Program Files\\nodejs\\npx.cmd",
-      "args": ["@playwright/mcp@latest"],
+      "args": ["@playwright/mcp@latest", "--browser", "chrome"],
       "env": {
         "PATH": "C:\\Program Files\\nodejs;C:\\Windows\\System32;C:\\Windows"
       }
