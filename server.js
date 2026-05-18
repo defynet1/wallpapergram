@@ -128,10 +128,28 @@ async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_views_post ON views(post_id);
   `);
-  // Встроенная категория «живые обои» (нельзя удалить юзером — is_custom=0)
+  // Миграции: type на постах, kind на категориях (для обоев/аватарок)
+  try { await pool.query("ALTER TABLE posts ADD COLUMN type TEXT DEFAULT 'wallpaper'"); } catch (e) {}
+  try { await pool.query("ALTER TABLE categories ADD COLUMN kind TEXT DEFAULT 'wallpaper'"); } catch (e) {}
+
+  // Встроенная категория «живые обои»
   await pool.query(
-    "INSERT INTO categories (tag, label, is_custom) VALUES ('live', '🎬 Живые', 0) ON CONFLICT (tag) DO NOTHING"
+    "INSERT INTO categories (tag, label, is_custom, kind) VALUES ('live', '🎬 Живые', 0, 'wallpaper') ON CONFLICT (tag) DO NOTHING"
   );
+
+  // Встроенные категории для аватарок
+  const avatarBuiltins = [
+    ['telegram', '💬 Telegram'],
+    ['standoff', '🎯 Standoff'],
+    ['games', '🎮 Игры'],
+    ['facebook', '📘 Facebook'],
+  ];
+  for (const [tag, label] of avatarBuiltins) {
+    await pool.query(
+      "INSERT INTO categories (tag, label, is_custom, kind) VALUES ($1, $2, 0, 'avatar') ON CONFLICT (tag) DO NOTHING",
+      [tag, label]
+    );
+  }
 }
 
 function isAnimated(mimetype) {
@@ -338,13 +356,14 @@ async function enrichPost(p, currentUsername) {
 
 app.get('/api/posts', optionalAuth, async (req, res) => {
   try {
-    const { search = '', category = '', limit = 50, before } = req.query;
+    const { search = '', category = '', limit = 50, before, type } = req.query;
+    const postType = (type === 'avatar') ? 'avatar' : 'wallpaper';
 
     let sql = `SELECT p.*, u.is_verified as author_verified, u.avatar as author_avatar
                FROM posts p
                LEFT JOIN users u ON u.username = p.author
-               WHERE 1=1`;
-    const params = [];
+               WHERE COALESCE(p.type, 'wallpaper') = ?`;
+    const params = [postType];
 
     if (before) {
       sql += ' AND p.created_at < ?';
@@ -386,7 +405,9 @@ app.post('/api/posts', authMiddleware, upload.single('image'), async (req, res) 
     if (!Array.isArray(categories) || categories.length < 3)
       return res.status(400).json({ error: 'Need at least 3 categories' });
 
-    if (isAnimated(req.file.mimetype) && !categories.includes('live')) {
+    const postType = (req.body.type === 'avatar') ? 'avatar' : 'wallpaper';
+
+    if (postType === 'wallpaper' && isAnimated(req.file.mimetype) && !categories.includes('live')) {
       categories = ['live', ...categories];
     }
 
@@ -395,11 +416,11 @@ app.post('/api/posts', authMiddleware, upload.single('image'), async (req, res) 
     const imagePath = '/uploads/' + req.file.filename;
 
     await run(
-      `INSERT INTO posts (id, author, title, description, image_path, categories, quality, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      id, req.user.username, title, description, imagePath, JSON.stringify(categories), quality, Date.now()
+      `INSERT INTO posts (id, author, title, description, image_path, categories, quality, created_at, type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, req.user.username, title, description, imagePath, JSON.stringify(categories), quality, Date.now(), postType
     );
-    sseBroadcast('new-post', { id });
+    sseBroadcast('new-post', { id, type: postType });
     res.json({ id });
   } catch (e) {
     console.error('create post error:', e);
@@ -578,20 +599,27 @@ app.get('/api/users/:username/following', async (req, res) => {
 
 // ============ CATEGORIES ============
 app.get('/api/categories', async (req, res) => {
-  const rows = await all('SELECT * FROM categories');
-  res.json(rows);
+  const { kind } = req.query;
+  if (kind === 'avatar' || kind === 'wallpaper') {
+    const rows = await all("SELECT * FROM categories WHERE COALESCE(kind, 'wallpaper') = ?", kind);
+    res.json(rows);
+  } else {
+    const rows = await all('SELECT * FROM categories');
+    res.json(rows);
+  }
 });
 
 app.post('/api/categories', authMiddleware, async (req, res) => {
   const tag = (req.body.tag || '').toLowerCase().trim();
   const label = (req.body.label || '').trim().slice(0, 50);
+  const kind = (req.body.kind === 'avatar') ? 'avatar' : 'wallpaper';
   if (!tag || tag.length < 2) return res.status(400).json({ error: 'Tag too short' });
   if (!/^[a-zа-яё0-9_-]+$/i.test(tag)) return res.status(400).json({ error: 'Bad tag chars' });
   if (!label) return res.status(400).json({ error: 'Label required' });
 
   try {
-    await run('INSERT INTO categories (tag, label, is_custom) VALUES (?, ?, 1)', tag, label);
-    res.json({ tag, label });
+    await run('INSERT INTO categories (tag, label, is_custom, kind) VALUES (?, ?, 1, ?)', tag, label, kind);
+    res.json({ tag, label, kind });
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'Already exists' });
     console.error('category insert:', e);
@@ -753,7 +781,9 @@ app.post('/api/admin/post-as', authMiddleware, adminOnly, upload.single('image')
     if (!Array.isArray(categories) || categories.length < 3)
       return res.status(400).json({ error: 'Need at least 3 categories' });
 
-    if (isAnimated(req.file.mimetype) && !categories.includes('live')) {
+    const postType = (req.body.type === 'avatar') ? 'avatar' : 'wallpaper';
+
+    if (postType === 'wallpaper' && isAnimated(req.file.mimetype) && !categories.includes('live')) {
       categories = ['live', ...categories];
     }
 
@@ -762,11 +792,11 @@ app.post('/api/admin/post-as', authMiddleware, adminOnly, upload.single('image')
     const imagePath = '/uploads/' + req.file.filename;
 
     await run(
-      `INSERT INTO posts (id, author, title, description, image_path, categories, quality, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      id, targetUser.username, title, description, imagePath, JSON.stringify(categories), quality, Date.now()
+      `INSERT INTO posts (id, author, title, description, image_path, categories, quality, created_at, type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id, targetUser.username, title, description, imagePath, JSON.stringify(categories), quality, Date.now(), postType
     );
-    sseBroadcast('new-post', { id });
+    sseBroadcast('new-post', { id, type: postType });
     res.json({ id });
   } catch (e) {
     console.error('post-as error:', e);

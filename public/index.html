@@ -16,9 +16,14 @@
   a { color: var(--accent); }
 
   /* === HEADER === */
-  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 1rem 1.5rem; position: sticky; top: 0; z-index: 80; text-align: center; }
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.85rem 1.5rem 0; position: sticky; top: 0; z-index: 80; }
+  .header-top { display: flex; align-items: center; justify-content: center; padding-bottom: 0.7rem; }
   .logo { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; }
   .logo span { color: var(--accent); }
+  .section-tabs { display: flex; gap: 1.5rem; justify-content: center; }
+  .section-tab { background: none; border: none; color: var(--text-dim); font-family: inherit; font-size: 0.95rem; font-weight: 700; padding: 0 0 0.7rem 0; cursor: pointer; position: relative; }
+  .section-tab.active { color: var(--text); }
+  .section-tab.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent); border-radius: 2px; }
 
   /* === PAGES === */
   .page { display: none; max-width: 720px; margin: 0 auto; padding: 1rem 1.5rem; }
@@ -301,7 +306,13 @@
   </div>
 </div>
 
-<header><div class="logo">wallper<span>.</span></div></header>
+<header>
+  <div class="header-top"><div class="logo">wallper<span>.</span></div></div>
+  <div class="section-tabs">
+    <button class="section-tab active" data-section="wallpaper" onclick="switchSection('wallpaper')">🖼 Обои</button>
+    <button class="section-tab" data-section="avatar" onclick="switchSection('avatar')">😎 Аватарки</button>
+  </div>
+</header>
 
 <!-- FEED PAGE -->
 <div class="page active" id="pageFeed">
@@ -464,13 +475,43 @@ let CATEGORIES = [...BUILTIN_CATEGORIES];
 
 async function loadCategories() {
   try {
-    const custom = await api('/api/categories');
-    custom.forEach(c => {
-      if (!CATEGORIES.find(x => x.tag === c.tag)) {
-        CATEGORIES.push({ tag: c.tag, label: c.label, custom: !!c.is_custom });
-      }
-    });
+    if (currentSection === 'wallpaper') {
+      CATEGORIES = [...BUILTIN_CATEGORIES];
+      const custom = await api('/api/categories?kind=wallpaper');
+      custom.forEach(c => {
+        if (!CATEGORIES.find(x => x.tag === c.tag)) {
+          CATEGORIES.push({ tag: c.tag, label: c.label, custom: !!c.is_custom });
+        }
+      });
+    } else {
+      const cats = await api('/api/categories?kind=avatar');
+      CATEGORIES = cats.map(c => ({ tag: c.tag, label: c.label, custom: !!c.is_custom }));
+    }
   } catch (e) {}
+}
+
+async function switchSection(section) {
+  if (section === currentSection) return;
+  currentSection = section;
+  selectedCategory = null;
+  searchQuery = '';
+  const searchInput = document.getElementById('searchInput');
+  if (searchInput) searchInput.value = '';
+  document.querySelectorAll('.section-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.section === section);
+  });
+  // Обновим заголовок hero
+  const hero = document.querySelector('#pageFeed .hero h1');
+  if (hero) {
+    hero.innerHTML = section === 'avatar'
+      ? 'Аватарки —<br>смотри, голосуй, заливай свои'
+      : 'Покажи свои обои —<br>посмотрим что скажут люди';
+  }
+  // Заголовок страницы создания
+  const createTitle = document.querySelector('#pageCreate .page-title');
+  if (createTitle) createTitle.textContent = section === 'avatar' ? 'Новая аватарка' : 'Новые обои';
+  await loadCategories();
+  if (currentPage === 'feed') await loadFeed();
 }
 
 // ============ AUTH ============
@@ -624,9 +665,11 @@ let posts = [];
 let searchQuery = '';
 let selectedCategory = null;
 let currentPage = 'feed';
+let currentSection = 'wallpaper';
 
 async function loadFeed() {
   const q = new URLSearchParams();
+  q.set('type', currentSection);
   if (searchQuery) q.set('search', searchQuery);
   if (selectedCategory) q.set('category', selectedCategory);
   try {
@@ -1034,6 +1077,7 @@ document.getElementById('uploadForm').addEventListener('submit', async e => {
   fd.append('title', document.getElementById('titleInput').value.trim());
   fd.append('description', document.getElementById('descInput').value.trim());
   fd.append('categories', JSON.stringify(selectedPostCategories));
+  fd.append('type', currentSection);
   if (pendingQuality !== null) fd.append('quality', pendingQuality);
 
   const btn = document.getElementById('publishBtn');
@@ -1108,7 +1152,7 @@ document.getElementById('customCatForm').addEventListener('submit', async e => {
     err.textContent = 'Такая категория уже есть'; err.classList.add('show'); return;
   }
   try {
-    const r = await api('/api/categories', { method: 'POST', body: { tag, label: emojiInput + ' ' + tag } });
+    const r = await api('/api/categories', { method: 'POST', body: { tag, label: emojiInput + ' ' + tag, kind: currentSection } });
     CATEGORIES.push({ tag: r.tag, label: r.label, custom: true });
     if (!selectedPostCategories.includes(tag)) selectedPostCategories.push(tag);
     document.getElementById('customCatOverlay').style.display = 'none';
@@ -1653,7 +1697,13 @@ function connectSSE() {
       updates.forEach(applyCountsUpdate);
     } catch {}
   });
-  sseConnection.addEventListener('new-post', () => scheduleReload());
+  sseConnection.addEventListener('new-post', e => {
+    try {
+      const data = JSON.parse(e.data);
+      const t = data.type || 'wallpaper';
+      if (t === currentSection) scheduleReload();
+    } catch {}
+  });
   sseConnection.addEventListener('delete-post', e => {
     try {
       const { id } = JSON.parse(e.data);
