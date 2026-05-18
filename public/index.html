@@ -615,12 +615,17 @@ async function loadCategories() {
 }
 
 async function switchSection(section) {
-  if (section === currentSection) return;
-  currentSection = section;
-  selectedCategory = null;
-  searchQuery = '';
-  const searchInput = document.getElementById('searchInput');
-  if (searchInput) searchInput.value = '';
+  const sameSection = section === currentSection;
+  if (!sameSection) {
+    currentSection = section;
+    selectedCategory = null;
+    searchQuery = '';
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) searchInput.value = '';
+  }
+  // Клик по табу секции всегда возвращает на ленту, даже если ты в профиле/чате/etc
+  if (currentPage !== 'feed') switchPage('feed');
+  if (sameSection) return;
   document.querySelectorAll('.section-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.section === section);
   });
