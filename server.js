@@ -156,6 +156,8 @@ async function initDb() {
   // Миграция: монеты у юзеров, валюта у объявлений
   try { await pool.query("ALTER TABLE users ADD COLUMN coins BIGINT DEFAULT 0"); } catch (e) {}
   try { await pool.query("ALTER TABLE shop_listings ADD COLUMN currency TEXT DEFAULT 'rub'"); } catch (e) {}
+  // Миграция: авто-ответ при покупке
+  try { await pool.query("ALTER TABLE users ADD COLUMN auto_reply TEXT"); } catch (e) {}
   // Миграции: type на постах, kind на категориях (для обоев/аватарок)
   try { await pool.query("ALTER TABLE posts ADD COLUMN type TEXT DEFAULT 'wallpaper'"); } catch (e) {}
   try { await pool.query("ALTER TABLE categories ADD COLUMN kind TEXT DEFAULT 'wallpaper'"); } catch (e) {}
@@ -359,9 +361,16 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.get('/api/me', authMiddleware, async (req, res) => {
-  const u = await one('SELECT username, avatar, is_admin, is_verified, created_at, COALESCE(coins, 0)::int as coins FROM users WHERE username = ?', req.user.username);
+  const u = await one('SELECT username, avatar, is_admin, is_verified, created_at, COALESCE(coins, 0)::int as coins, auto_reply FROM users WHERE username = ?', req.user.username);
   if (!u) return res.status(404).json({ error: 'User not found' });
   res.json(u);
+});
+
+// Установить/убрать авто-ответ при покупке (пустая строка = выключить)
+app.put('/api/me/auto-reply', authMiddleware, async (req, res) => {
+  const text = typeof req.body.text === 'string' ? req.body.text.trim().slice(0, 1000) : '';
+  await run('UPDATE users SET auto_reply = ? WHERE username = ?', text || null, req.user.username);
+  res.json({ ok: true, auto_reply: text || null });
 });
 
 // Текущий баланс монет (для лёгких опросов)
@@ -887,6 +896,7 @@ app.post('/api/shop/:id/buy', authMiddleware, async (req, res) => {
 
     let newBalance = null;
     let messageRow = null;
+    let autoReplyRow = null;
     try {
       await withTx(async (client) => {
         const r = await client.query(
@@ -904,6 +914,19 @@ app.post('/api/shop/:id/buy', authMiddleware, async (req, res) => {
           [msgId, meLc, sellerLc, msgText, ts]
         );
         messageRow = { id: msgId, sender: meLc, receiver: sellerLc, text: msgText, created_at: ts, read_at: null };
+
+        // Авто-ответ продавца, если настроен
+        const seller = await client.query('SELECT auto_reply FROM users WHERE LOWER(username) = $1', [sellerLc]);
+        const reply = seller.rows[0] && seller.rows[0].auto_reply;
+        if (reply && reply.trim()) {
+          const arId = Date.now().toString(36) + crypto.randomBytes(3).toString('hex') + '_ar';
+          const arTs = ts + 1;
+          await client.query(
+            'INSERT INTO messages (id, sender, receiver, text, created_at) VALUES ($1, $2, $3, $4, $5)',
+            [arId, sellerLc, meLc, reply, arTs]
+          );
+          autoReplyRow = { id: arId, sender: sellerLc, receiver: meLc, text: reply, created_at: arTs, read_at: null };
+        }
       });
     } catch (e) {
       if (e.message === 'Недостаточно монет') return res.status(402).json({ error: e.message });
@@ -914,6 +937,10 @@ app.post('/api/shop/:id/buy', authMiddleware, async (req, res) => {
     if (messageRow) {
       sseSendToUser(sellerLc, 'message', { message: messageRow, from: me });
       sseSendToUser(meLc, 'message', { message: messageRow, from: me });
+    }
+    if (autoReplyRow) {
+      sseSendToUser(sellerLc, 'message', { message: autoReplyRow, from: listing.author });
+      sseSendToUser(meLc, 'message', { message: autoReplyRow, from: listing.author });
     }
     res.json({ ok: true, coins: newBalance, peer: listing.author });
   } catch (e) {

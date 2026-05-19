@@ -512,6 +512,17 @@
   </form>
   <div id="promoMessage" style="font-size:0.85rem; min-height: 1.2rem; padding: 0.25rem 0;"></div>
 
+  <div class="profile-section-title">🤖 Авто-ответ при покупке</div>
+  <div style="font-size:0.8rem; color:var(--text-dim); margin-bottom:0.5rem">Когда кто-то купит твою услугу за монеты — это сообщение уйдёт ему автоматом.</div>
+  <form id="autoReplyForm" style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom: 0.5rem;">
+    <textarea id="autoReplyInput" class="comment-input" maxlength="1000" rows="3" placeholder="Например: Спасибо за покупку! Жду ТЗ в этом чате." style="max-height:none; min-height:60px; border-radius:10px; padding:0.7rem 0.9rem;"></textarea>
+    <div style="display:flex; gap:0.5rem;">
+      <button type="submit" class="btn" style="flex:1">Сохранить</button>
+      <button type="button" class="btn btn-secondary" onclick="clearAutoReply()" style="width:auto">Очистить</button>
+    </div>
+  </form>
+  <div id="autoReplyMessage" style="font-size:0.8rem; min-height: 1.1rem; padding: 0.25rem 0;"></div>
+
   <div id="adminSection" style="display:none">
     <div class="profile-section-title">👑 АДМИН</div>
     <button class="profile-action admin-action" onclick="openAdmin()">
@@ -1533,12 +1544,37 @@ async function renderProfile() {
 
   document.getElementById('adminSection').style.display = currentUser.is_admin ? '' : 'none';
 
+  // Заполняем поле авто-ответа текущим значением
+  const arInput = document.getElementById('autoReplyInput');
+  if (arInput) arInput.value = currentUser.auto_reply || '';
+  document.getElementById('autoReplyMessage').textContent = '';
+
   try {
     const u = await api('/api/users/' + encodeURIComponent(currentUser.username));
     document.getElementById('statPosts').textContent = formatVoteCount(u.posts);
     document.getElementById('statFollowers').textContent = formatVoteCount(u.followers);
     document.getElementById('statFollowing').textContent = formatVoteCount(u.following);
   } catch (e) {}
+}
+
+document.getElementById('autoReplyForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const text = document.getElementById('autoReplyInput').value.trim();
+  const msg = document.getElementById('autoReplyMessage');
+  try {
+    const r = await api('/api/me/auto-reply', { method: 'PUT', body: { text } });
+    if (currentUser) currentUser.auto_reply = r.auto_reply;
+    msg.style.color = 'var(--good)';
+    msg.textContent = text ? '✓ Авто-ответ сохранён' : '✓ Авто-ответ выключен';
+  } catch (e) {
+    msg.style.color = 'var(--bad)';
+    msg.textContent = e.message;
+  }
+});
+
+async function clearAutoReply() {
+  document.getElementById('autoReplyInput').value = '';
+  document.getElementById('autoReplyForm').dispatchEvent(new Event('submit'));
 }
 
 document.getElementById('avatarInput').addEventListener('change', async e => {
