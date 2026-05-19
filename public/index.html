@@ -70,6 +70,14 @@
   .shop-actions { display: flex; gap: 0.5rem; }
   .shop-actions .btn { padding: 0.65rem 1rem; font-size: 0.9rem; }
 
+  /* === ORDER BANNER === */
+  .order-banner { background: linear-gradient(135deg, rgba(255,215,0,0.12), rgba(255,140,0,0.08)); border: 1px solid rgba(255,215,0,0.4); border-radius: 12px; padding: 0.85rem 1rem; margin-bottom: 0.5rem; }
+  .order-banner-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem; }
+  .order-banner-actions { display: flex; gap: 0.5rem; }
+  .order-banner-actions .btn { padding: 0.5rem 0.9rem; font-size: 0.85rem; }
+  .order-banner-actions .btn-confirm { background: linear-gradient(135deg, #4dd599, #2ea675); color: #042; }
+  .order-banner-actions .btn-cancel { background: var(--surface-2); color: var(--bad); border: 1px solid var(--border); }
+
   /* === CHAT VIEW === */
   .chat-thread { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.5rem 0 1rem; }
   .msg { max-width: 80%; padding: 0.55rem 0.85rem; border-radius: 16px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -554,6 +562,7 @@
     <button class="page-close" onclick="switchPage('chats')" style="margin-right:0.5rem">‹</button>
     <div class="page-title" id="chatTitle">—</div>
   </div>
+  <div id="chatOrdersContainer"></div>
   <div id="chatThreadContainer"></div>
   <form id="chatForm" class="chat-input-wrap" style="display:none">
     <textarea class="chat-input" id="chatInput" placeholder="Написать сообщение..." rows="1"></textarea>
@@ -774,7 +783,7 @@ async function buyShopListing(id) {
   if (myCoins < l.price) {
     return alert(`Не хватает монет. У тебя ${myCoins} 🪙, нужно ${l.price} 🪙`);
   }
-  if (!confirm(`Купить «${l.title}» за ${l.price} 🪙?\nУ тебя останется ${myCoins - l.price} 🪙.`)) return;
+  if (!confirm(`Заказать «${l.title}» за ${l.price} 🪙?\nМонеты будут удержаны и уйдут продавцу только после твоего подтверждения получения.\nОстанется на балансе: ${myCoins - l.price} 🪙.`)) return;
   try {
     const r = await api('/api/shop/' + id + '/buy', { method: 'POST' });
     currentUser.coins = r.coins;
@@ -2143,6 +2152,15 @@ function connectSSE() {
       if (currentSection === 'shop' && currentPage === 'feed') renderShop();
     } catch {}
   });
+  sseConnection.addEventListener('order-changed', e => {
+    try {
+      const { peer } = JSON.parse(e.data);
+      if (currentPage === 'chat' && currentChatPeer === (peer || '').toLowerCase()) {
+        refreshChatOrders();
+      }
+      refreshCoins();
+    } catch {}
+  });
   sseConnection.onerror = () => {
     // EventSource сам переподключается
   };
@@ -2230,6 +2248,7 @@ async function openChat(peerUsername) {
   document.getElementById('chatTitle').textContent = peerUsername;
   const cont = document.getElementById('chatThreadContainer');
   cont.innerHTML = '<div class="spinner"></div>';
+  document.getElementById('chatOrdersContainer').innerHTML = '';
   try {
     const data = await api('/api/chats/' + encodeURIComponent(peerUsername));
     document.getElementById('chatTitle').innerHTML = escapeHtml(data.peer) + verifiedBadge(data.peer_verified);
@@ -2242,9 +2261,60 @@ async function openChat(peerUsername) {
       cont.innerHTML += '<div class="empty-state" style="padding:1rem">Подпишись на @' + escapeHtml(data.peer) + ', чтобы написать первым.</div>';
     }
     refreshUnreadCount();
+    refreshChatOrders();
   } catch (e) {
     cont.innerHTML = '<div class="empty-state">Ошибка загрузки чата</div>';
   }
+}
+
+async function refreshChatOrders() {
+  if (!currentChatPeer || currentPage !== 'chat') return;
+  const cont = document.getElementById('chatOrdersContainer');
+  try {
+    const orders = await api('/api/orders/pending-with/' + encodeURIComponent(currentChatPeer));
+    if (!orders.length) {
+      cont.innerHTML = '';
+      return;
+    }
+    cont.innerHTML = orders.map(o => {
+      if (o.i_am_buyer) {
+        return `
+          <div class="order-banner">
+            <div class="order-banner-title">🪙 Заказ «${escapeHtml(o.listing_title)}» за ${o.price} 🪙 — деньги удержаны</div>
+            <div class="order-banner-actions">
+              <button class="btn btn-confirm" onclick="confirmOrder('${o.id}')">✅ Подтвердить получение</button>
+              <button class="btn btn-cancel" onclick="cancelOrder('${o.id}')">Отменить</button>
+            </div>
+          </div>`;
+      }
+      return `
+        <div class="order-banner">
+          <div class="order-banner-title">⏳ «${escapeHtml(o.listing_title)}» — покупатель должен подтвердить (${o.price} 🪙)</div>
+          <div class="order-banner-actions">
+            <button class="btn btn-cancel" onclick="cancelOrder('${o.id}')">Отменить и вернуть монеты</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    cont.innerHTML = '';
+  }
+}
+
+async function confirmOrder(id) {
+  if (!confirm('Подтвердить получение услуги? Монеты уйдут продавцу безвозвратно.')) return;
+  try {
+    await api('/api/orders/' + id + '/confirm', { method: 'POST' });
+    refreshChatOrders();
+  } catch (e) { alert(e.message); }
+}
+
+async function cancelOrder(id) {
+  if (!confirm('Отменить заказ? Монеты вернутся покупателю.')) return;
+  try {
+    await api('/api/orders/' + id + '/cancel', { method: 'POST' });
+    refreshChatOrders();
+    refreshCoins();
+  } catch (e) { alert(e.message); }
 }
 
 function renderChatThread(messages) {
@@ -2310,10 +2380,6 @@ function onIncomingMessage(data) {
   const { message } = data;
   if (!message || !currentUser) return;
   const meLc = currentUser.username.toLowerCase();
-  // Покупка от другого юзера могла увеличить мой баланс
-  if (message.text && message.text.startsWith('🛍 Купил') && message.receiver.toLowerCase() === meLc) {
-    refreshCoins();
-  }
   const peerOfMsg = message.sender.toLowerCase() === meLc ? message.receiver.toLowerCase() : message.sender.toLowerCase();
   // Если открыт именно этот чат — добавляем в DOM и помечаем прочитанным
   if (currentPage === 'chat' && currentChatPeer === peerOfMsg) {

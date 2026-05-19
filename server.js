@@ -150,6 +150,20 @@ async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_shop_created ON shop_listings(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_shop_author ON shop_listings(author);
+
+    CREATE TABLE IF NOT EXISTS shop_orders (
+      id TEXT PRIMARY KEY,
+      listing_id TEXT,
+      listing_title TEXT NOT NULL,
+      buyer TEXT NOT NULL,
+      seller TEXT NOT NULL,
+      price BIGINT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at BIGINT NOT NULL,
+      completed_at BIGINT
+    );
+    CREATE INDEX IF NOT EXISTS idx_orders_buyer ON shop_orders(buyer, status);
+    CREATE INDEX IF NOT EXISTS idx_orders_seller ON shop_orders(seller, status);
   `);
   // Миграция: баннер у объявлений
   try { await pool.query("ALTER TABLE shop_listings ADD COLUMN banner TEXT"); } catch (e) {}
@@ -890,9 +904,10 @@ app.post('/api/shop/:id/buy', authMiddleware, async (req, res) => {
 
     const price = Number(listing.price) || 0;
     const sellerLc = listing.author.toLowerCase();
-    const msgId = Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+    const orderId = Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+    const msgId = orderId + '_buy';
     const ts = Date.now();
-    const msgText = `🛍 Купил(а) «${listing.title}» за ${price} 🪙`;
+    const msgText = `🛍 Заказал(а) «${listing.title}» за ${price} 🪙 — деньги удержаны, продавец получит их после подтверждения покупателем.`;
 
     let newBalance = null;
     let messageRow = null;
@@ -905,9 +920,11 @@ app.post('/api/shop/:id/buy', authMiddleware, async (req, res) => {
         );
         if (!r.rowCount) throw new Error('Недостаточно монет');
         newBalance = parseInt(r.rows[0].coins, 10);
+        // Деньги уходят в эскроу — заказ в статусе pending. Продавцу пока ничего.
         await client.query(
-          'UPDATE users SET coins = COALESCE(coins, 0) + $1 WHERE LOWER(username) = $2',
-          [price, sellerLc]
+          `INSERT INTO shop_orders (id, listing_id, listing_title, buyer, seller, price, status, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)`,
+          [orderId, listing.id, listing.title, meLc, sellerLc, price, ts]
         );
         await client.query(
           'INSERT INTO messages (id, sender, receiver, text, created_at) VALUES ($1, $2, $3, $4, $5)',
@@ -919,7 +936,7 @@ app.post('/api/shop/:id/buy', authMiddleware, async (req, res) => {
         const seller = await client.query('SELECT auto_reply FROM users WHERE LOWER(username) = $1', [sellerLc]);
         const reply = seller.rows[0] && seller.rows[0].auto_reply;
         if (reply && reply.trim()) {
-          const arId = Date.now().toString(36) + crypto.randomBytes(3).toString('hex') + '_ar';
+          const arId = orderId + '_ar';
           const arTs = ts + 1;
           await client.query(
             'INSERT INTO messages (id, sender, receiver, text, created_at) VALUES ($1, $2, $3, $4, $5)',
@@ -933,7 +950,6 @@ app.post('/api/shop/:id/buy', authMiddleware, async (req, res) => {
       throw e;
     }
 
-    // Реалтайм-уведомления участникам
     if (messageRow) {
       sseSendToUser(sellerLc, 'message', { message: messageRow, from: me });
       sseSendToUser(meLc, 'message', { message: messageRow, from: me });
@@ -942,9 +958,129 @@ app.post('/api/shop/:id/buy', authMiddleware, async (req, res) => {
       sseSendToUser(sellerLc, 'message', { message: autoReplyRow, from: listing.author });
       sseSendToUser(meLc, 'message', { message: autoReplyRow, from: listing.author });
     }
-    res.json({ ok: true, coins: newBalance, peer: listing.author });
+    // Уведомление об изменении заказа — оба обновят список pending в открытом чате
+    sseSendToUser(sellerLc, 'order-changed', { peer: me });
+    sseSendToUser(meLc, 'order-changed', { peer: listing.author });
+    res.json({ ok: true, coins: newBalance, peer: listing.author, orderId });
   } catch (e) {
     console.error('POST /api/shop/:id/buy error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Список pending-заказов между мной и собеседником (обе стороны)
+app.get('/api/orders/pending-with/:username', authMiddleware, async (req, res) => {
+  try {
+    const meLc = req.user.username.toLowerCase();
+    const peerLc = req.params.username.toLowerCase();
+    const rows = await all(`
+      SELECT id, listing_id, listing_title, buyer, seller, price, created_at
+      FROM shop_orders
+      WHERE status = 'pending'
+        AND ((buyer = ? AND seller = ?) OR (buyer = ? AND seller = ?))
+      ORDER BY created_at ASC
+    `, meLc, peerLc, peerLc, meLc);
+    res.json(rows.map(o => ({
+      id: o.id,
+      listing_id: o.listing_id,
+      listing_title: o.listing_title,
+      buyer: o.buyer,
+      seller: o.seller,
+      price: o.price,
+      created_at: o.created_at,
+      i_am_buyer: o.buyer === meLc
+    })));
+  } catch (e) {
+    console.error('GET pending-with error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Подтвердить получение — деньги уходят продавцу. Может только покупатель.
+app.post('/api/orders/:id/confirm', authMiddleware, async (req, res) => {
+  try {
+    const meLc = req.user.username.toLowerCase();
+    const order = await one('SELECT * FROM shop_orders WHERE id = ?', req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'pending') return res.status(400).json({ error: 'Заказ уже закрыт' });
+    if (order.buyer !== meLc) return res.status(403).json({ error: 'Подтвердить может только покупатель' });
+
+    const msgId = order.id + '_done';
+    const ts = Date.now();
+    const text = `✅ Заказ «${order.listing_title}» подтверждён — продавцу зачислено ${order.price} 🪙.`;
+    let messageRow = null;
+
+    await withTx(async (client) => {
+      const upd = await client.query(
+        "UPDATE shop_orders SET status = 'completed', completed_at = $1 WHERE id = $2 AND status = 'pending'",
+        [ts, order.id]
+      );
+      if (!upd.rowCount) throw new Error('race');
+      await client.query(
+        'UPDATE users SET coins = COALESCE(coins, 0) + $1 WHERE LOWER(username) = $2',
+        [order.price, order.seller]
+      );
+      await client.query(
+        'INSERT INTO messages (id, sender, receiver, text, created_at) VALUES ($1, $2, $3, $4, $5)',
+        [msgId, order.buyer, order.seller, text, ts]
+      );
+      messageRow = { id: msgId, sender: order.buyer, receiver: order.seller, text, created_at: ts, read_at: null };
+    });
+
+    sseSendToUser(order.seller, 'message', { message: messageRow, from: req.user.username });
+    sseSendToUser(order.buyer, 'message', { message: messageRow, from: req.user.username });
+    sseSendToUser(order.seller, 'order-changed', { peer: req.user.username });
+    sseSendToUser(order.buyer, 'order-changed', { peer: order.seller });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('confirm order error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Отменить заказ — возврат покупателю. Доступно покупателю или продавцу.
+app.post('/api/orders/:id/cancel', authMiddleware, async (req, res) => {
+  try {
+    const meLc = req.user.username.toLowerCase();
+    const order = await one('SELECT * FROM shop_orders WHERE id = ?', req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.status !== 'pending') return res.status(400).json({ error: 'Заказ уже закрыт' });
+    if (order.buyer !== meLc && order.seller !== meLc) return res.status(403).json({ error: 'Forbidden' });
+
+    const msgId = order.id + '_cancel';
+    const ts = Date.now();
+    const by = order.buyer === meLc ? 'покупателем' : 'продавцом';
+    const text = `❌ Заказ «${order.listing_title}» отменён ${by} — ${order.price} 🪙 возвращены покупателю.`;
+    let messageRow = null;
+
+    await withTx(async (client) => {
+      const upd = await client.query(
+        "UPDATE shop_orders SET status = 'cancelled', completed_at = $1 WHERE id = $2 AND status = 'pending'",
+        [ts, order.id]
+      );
+      if (!upd.rowCount) throw new Error('race');
+      await client.query(
+        'UPDATE users SET coins = COALESCE(coins, 0) + $1 WHERE LOWER(username) = $2',
+        [order.price, order.buyer]
+      );
+      await client.query(
+        'INSERT INTO messages (id, sender, receiver, text, created_at) VALUES ($1, $2, $3, $4, $5)',
+        [msgId, meLc, meLc === order.buyer ? order.seller : order.buyer, text, ts]
+      );
+      messageRow = {
+        id: msgId, sender: meLc,
+        receiver: meLc === order.buyer ? order.seller : order.buyer,
+        text, created_at: ts, read_at: null
+      };
+    });
+
+    sseSendToUser(order.seller, 'message', { message: messageRow, from: req.user.username });
+    sseSendToUser(order.buyer, 'message', { message: messageRow, from: req.user.username });
+    sseSendToUser(order.seller, 'order-changed', { peer: order.buyer });
+    sseSendToUser(order.buyer, 'order-changed', { peer: order.seller });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('cancel order error:', e);
     res.status(500).json({ error: 'Server error' });
   }
 });
