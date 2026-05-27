@@ -172,6 +172,8 @@ async function initDb() {
   try { await pool.query("ALTER TABLE shop_listings ADD COLUMN currency TEXT DEFAULT 'rub'"); } catch (e) {}
   // Миграция: авто-ответ при покупке
   try { await pool.query("ALTER TABLE users ADD COLUMN auto_reply TEXT"); } catch (e) {}
+  // Миграция: баннер профиля
+  try { await pool.query("ALTER TABLE users ADD COLUMN banner TEXT"); } catch (e) {}
   // Миграции: type на постах, kind на категориях (для обоев/аватарок)
   try { await pool.query("ALTER TABLE posts ADD COLUMN type TEXT DEFAULT 'wallpaper'"); } catch (e) {}
   try { await pool.query("ALTER TABLE categories ADD COLUMN kind TEXT DEFAULT 'wallpaper'"); } catch (e) {}
@@ -375,7 +377,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.get('/api/me', authMiddleware, async (req, res) => {
-  const u = await one('SELECT username, avatar, is_admin, is_verified, created_at, COALESCE(coins, 0)::int as coins, auto_reply FROM users WHERE username = ?', req.user.username);
+  const u = await one('SELECT username, avatar, banner, is_admin, is_verified, created_at, COALESCE(coins, 0)::int as coins, auto_reply FROM users WHERE username = ?', req.user.username);
   if (!u) return res.status(404).json({ error: 'User not found' });
   res.json(u);
 });
@@ -395,7 +397,7 @@ app.get('/api/me/coins', authMiddleware, async (req, res) => {
 
 // ============ USER ROUTES ============
 app.get('/api/users/:username', async (req, res) => {
-  const u = await one('SELECT username, avatar, is_verified, created_at FROM users WHERE LOWER(username) = LOWER(?)', req.params.username);
+  const u = await one('SELECT username, avatar, banner, is_verified, created_at FROM users WHERE LOWER(username) = LOWER(?)', req.params.username);
   if (!u) return res.status(404).json({ error: 'User not found' });
 
   const postsCount = (await one('SELECT COUNT(*)::int as c FROM posts WHERE LOWER(author) = LOWER(?)', req.params.username)).c;
@@ -410,6 +412,29 @@ app.put('/api/me/avatar', authMiddleware, upload.single('avatar'), async (req, r
   const url = '/uploads/' + req.file.filename;
   await run('UPDATE users SET avatar = ? WHERE username = ?', url, req.user.username);
   res.json({ avatar: url });
+});
+
+app.put('/api/me/banner', authMiddleware, upload.single('banner'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file' });
+  const url = '/uploads/' + req.file.filename;
+  // Удалим старый баннер с диска
+  const prev = await one('SELECT banner FROM users WHERE username = ?', req.user.username);
+  if (prev && prev.banner && prev.banner.startsWith('/uploads/')) {
+    const fp = path.join(UPLOADS_DIR, path.basename(prev.banner));
+    fs.promises.unlink(fp).catch(() => {});
+  }
+  await run('UPDATE users SET banner = ? WHERE username = ?', url, req.user.username);
+  res.json({ banner: url });
+});
+
+app.delete('/api/me/banner', authMiddleware, async (req, res) => {
+  const prev = await one('SELECT banner FROM users WHERE username = ?', req.user.username);
+  if (prev && prev.banner && prev.banner.startsWith('/uploads/')) {
+    const fp = path.join(UPLOADS_DIR, path.basename(prev.banner));
+    fs.promises.unlink(fp).catch(() => {});
+  }
+  await run('UPDATE users SET banner = NULL WHERE username = ?', req.user.username);
+  res.json({ ok: true });
 });
 
 // ============ POSTS ============

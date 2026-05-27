@@ -245,6 +245,12 @@
   .category-counter.error { color: var(--bad); }
 
   /* === PROFILE === */
+  .profile-banner { position: relative; width: 100%; aspect-ratio: 16 / 6; background: linear-gradient(135deg, var(--accent), var(--cool)); background-size: cover; background-position: center; border-radius: 14px; overflow: hidden; }
+  .profile-banner.editable { cursor: pointer; }
+  .profile-banner .edit-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.55); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 700; opacity: 0; transition: opacity 0.2s; }
+  .profile-banner.editable:hover .edit-overlay { opacity: 1; }
+  .profile-banner .remove-btn { position: absolute; top: 0.5rem; right: 0.5rem; background: rgba(15, 20, 25, 0.7); border: 1px solid rgba(255,255,255,0.15); color: #fff; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 1rem; display: none; align-items: center; justify-content: center; backdrop-filter: blur(8px); z-index: 2; }
+  .profile-banner.has-image .remove-btn { display: flex; }
   .profile-hero { display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem; text-align: center; }
   .profile-avatar { width: 96px; height: 96px; background: linear-gradient(135deg, var(--accent), var(--cool)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 2.5rem; color: var(--bg); margin-bottom: 1rem; cursor: pointer; background-size: cover; background-position: center; position: relative; overflow: hidden; }
   .profile-avatar.has-image { color: transparent; }
@@ -493,6 +499,11 @@
 
 <!-- PROFILE PAGE -->
 <div class="page" id="pageProfile">
+  <div class="profile-banner editable" id="profileBanner" onclick="document.getElementById('bannerInput').click()">
+    <div class="edit-overlay">📷 Сменить баннер</div>
+    <button class="remove-btn" onclick="event.stopPropagation(); removeBanner()" title="Удалить баннер">×</button>
+  </div>
+  <input type="file" id="bannerInput" accept="image/*" style="display:none">
   <div class="profile-hero">
     <div class="profile-avatar" id="profileAvatar" onclick="document.getElementById('avatarInput').click()">
       <span id="profileAvatarLetter">?</span>
@@ -1547,6 +1558,15 @@ async function renderProfile() {
     av.classList.remove('has-image');
   }
 
+  const bn = document.getElementById('profileBanner');
+  if (currentUser.banner) {
+    bn.style.backgroundImage = `url('${currentUser.banner}')`;
+    bn.classList.add('has-image');
+  } else {
+    bn.style.backgroundImage = '';
+    bn.classList.remove('has-image');
+  }
+
   if (currentUser.created_at) {
     document.getElementById('profileMeta').textContent = 'С нами с ' + new Date(currentUser.created_at).toLocaleDateString('ru-RU', { year: 'numeric', month: 'long' });
   }
@@ -1599,6 +1619,29 @@ document.getElementById('avatarInput').addEventListener('change', async e => {
   } catch (e) { alert(e.message); }
   finally { e.target.value = ''; }
 });
+
+document.getElementById('bannerInput').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (!f.type.startsWith('image/')) { alert('Это не изображение'); e.target.value = ''; return; }
+  const fd = new FormData();
+  fd.append('banner', f);
+  try {
+    const r = await api('/api/me/banner', { method: 'PUT', body: fd });
+    currentUser.banner = r.banner;
+    renderProfile();
+  } catch (e) { alert(e.message); }
+  finally { e.target.value = ''; }
+});
+
+async function removeBanner() {
+  if (!confirm('Удалить баннер?')) return;
+  try {
+    await api('/api/me/banner', { method: 'DELETE' });
+    currentUser.banner = null;
+    renderProfile();
+  } catch (e) { alert(e.message); }
+}
 
 document.getElementById('promoForm').addEventListener('submit', async e => {
   e.preventDefault();
@@ -1679,12 +1722,15 @@ async function openUser(username) {
     }
     const avStyle = u.avatar ? `style="background-image:url('${u.avatar}')"` : '';
     const avCls = u.avatar ? 'has-image' : '';
+    const bnStyle = u.banner ? `style="background-image:url('${u.banner}')"` : '';
+    const bnCls = u.banner ? 'has-image' : '';
     page.innerHTML = `
       <div class="page-header">
         <button class="page-close" onclick="switchPage('feed')">‹</button>
         <div class="page-title">${escapeHtml(u.username)}</div>
         <div style="width:36px"></div>
       </div>
+      <div class="profile-banner ${bnCls}" ${bnStyle}></div>
       <div class="profile-hero">
         <div class="profile-avatar ${avCls}" ${avStyle}>${avCls ? '' : escapeHtml(u.username.charAt(0).toUpperCase())}</div>
         <div class="profile-name">${escapeHtml(u.username)}${verifiedBadge(u.is_verified)}</div>
