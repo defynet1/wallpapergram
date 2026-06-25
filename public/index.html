@@ -260,7 +260,7 @@ input.fld:focus{border-color:var(--accent)}
         <input class="fld" id="auName" placeholder="Логин (для входа)" autocomplete="username">
         <input class="fld" id="auPass" type="password" placeholder="Пароль" autocomplete="current-password">
         <input class="fld reg-only" id="auGameNick" placeholder="Игровой ник из Standoff 2" maxlength="24" autocomplete="off">
-        <input class="fld reg-only" id="auGameId" placeholder="Игровой ID (только цифры)" inputmode="numeric" maxlength="20" autocomplete="off">
+        <input class="fld reg-only" id="auGameId" placeholder="Игровой ID (8 цифр)" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" autocomplete="off">
         <button class="btn full" type="submit" id="auSubmit">Войти</button>
       </form>
       <div class="err" id="auErr"></div>

@@ -194,8 +194,8 @@ app.post('/api/register', async (req, res) => {
     const gid = (gameId || '').trim();
     if (gnick.length < 2 || gnick.length > 24)
       return res.status(400).json({ error: 'Игровой ник 2-24 символа' });
-    if (!/^[0-9]{3,20}$/.test(gid))
-      return res.status(400).json({ error: 'Игровой ID — только цифры (3-20)' });
+    if (!/^[0-9]{8}$/.test(gid))
+      return res.status(400).json({ error: 'Игровой ID — ровно 8 цифр' });
 
     const exists = await one('SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)', username);
     if (exists) return res.status(409).json({ error: 'Логин занят' });
