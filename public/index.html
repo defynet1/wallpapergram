@@ -209,7 +209,75 @@ input.fld:focus{border-color:var(--accent)}
 
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ban);color:#fff;font-weight:600;padding:.6rem 1.1rem;border-radius:8px;z-index:200;opacity:0;transition:opacity .25s;pointer-events:none;font-size:.9rem;box-shadow:0 6px 24px rgba(0,0,0,.4)}
 
+/* ===== DASHBOARD / WIDGETS ===== */
+:root{ --m1:#34d0ff; --m2:#a374ff; --m5:#ff9a32; --gold:#ffd24a; --good2:#46e08a; }
+.dash{display:grid;grid-template-columns:1fr 340px;gap:1.2rem;align-items:start;margin-top:1.4rem}
+.dash-main{display:flex;flex-direction:column;gap:1.2rem;min-width:0}
+.dash-side{display:flex;flex-direction:column;gap:1.2rem;position:sticky;top:84px}
+.widget{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);position:relative;overflow:hidden}
+.widget::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent);z-index:1}
+.widget.g-gold::before{background:linear-gradient(90deg,var(--gold),#ff9a32)}
+.widget.g-cyan::before{background:linear-gradient(90deg,var(--m1),#7fe0ff)}
+.widget.g-violet::before{background:linear-gradient(90deg,var(--m2),#caa6ff)}
+.widget.g-green::before{background:linear-gradient(90deg,var(--good2),#9af5c4)}
+.widget-h{display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.05rem;border-bottom:1px solid var(--line)}
+.widget-h .wt{font-family:'Rajdhani';font-weight:700;text-transform:uppercase;letter-spacing:.07em;font-size:1rem;display:flex;align-items:center;gap:.45rem}
+.widget-h .cnt{font-family:'Rajdhani';font-weight:700;font-size:.85rem;color:var(--dim)}
+.widget-b{padding:1rem 1.05rem}
+
+/* mode cards */
+.mode-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:.9rem}
+.mcard-mode{position:relative;cursor:pointer;padding:1.1rem;border:1px solid var(--line);background:var(--panel);overflow:hidden;transition:transform .14s,border-color .14s,box-shadow .14s}
+.mcard-mode:hover{transform:translateY(-3px)}
+.mcard-mode .mglow{position:absolute;inset:0;opacity:.16;background:radial-gradient(circle at 75% 0%,currentColor,transparent 62%);pointer-events:none}
+.mcard-mode .mfmt{font-family:'Rajdhani';font-weight:700;font-size:2rem;line-height:1;color:currentColor}
+.mcard-mode .mname{font-family:'Rajdhani';font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text);margin-top:.15rem}
+.mcard-mode .mmeta{font-size:.76rem;color:var(--dim);margin-top:.5rem}
+.mcard-mode .mbadge{position:absolute;top:.65rem;right:.75rem;font-family:'Rajdhani';font-weight:700;font-size:.78rem;color:currentColor}
+.mcard-mode.m-1v1{color:var(--m1)} .mcard-mode.m-2v2{color:var(--m2)} .mcard-mode.m-5v5{color:var(--m5)}
+.mcard-mode.on{border-color:currentColor;box-shadow:0 0 0 1px currentColor,0 10px 26px rgba(0,0,0,.35)}
+
+/* profile widget */
+.pf{display:flex;align-items:flex-start;gap:.85rem}
+.pf .pf-av{width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,#2a3547,#161e2a);display:grid;place-items:center;font-size:1.6rem;background-size:cover;background-position:center;flex:none}
+.pf .pf-nick{font-family:'Rajdhani';font-weight:700;font-size:1.3rem;line-height:1.05}
+.pf .pf-id{font-size:.74rem;color:var(--dim);margin-top:2px}
+.rankbadge{display:inline-flex;align-items:center;gap:.3rem;font-family:'Rajdhani';font-weight:700;font-size:.8rem;padding:.18rem .5rem;border-radius:6px;text-transform:uppercase;letter-spacing:.04em;margin-top:.45rem}
+.rankrow{display:flex;align-items:center;justify-content:space-between;margin-top:1rem;font-size:.78rem;color:var(--dim)}
+.progress{height:8px;background:var(--bg2);border-radius:99px;overflow:hidden;margin-top:.4rem;border:1px solid var(--line)}
+.progress > i{display:block;height:100%;border-radius:99px;transition:width .5s}
+.pf-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-top:1rem}
+.pf-stats .ps{background:var(--bg2);border:1px solid var(--line);padding:.5rem;text-align:center}
+.pf-stats .ps .v{font-family:'Rajdhani';font-weight:700;font-size:1.15rem;line-height:1.1}
+.pf-stats .ps .k{font-size:.64rem;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;margin-top:.15rem}
+
+/* leaderboard */
+.lb{display:flex;flex-direction:column}
+.lb-row{display:flex;align-items:center;gap:.65rem;padding:.45rem .15rem;border-bottom:1px solid var(--line)}
+.lb-row:last-child{border-bottom:none}
+.lb-row .rk{width:22px;text-align:center;font-family:'Rajdhani';font-weight:700;color:var(--dim)}
+.lb-row.top1 .rk{color:var(--gold)} .lb-row.top2 .rk{color:#cfd8e3} .lb-row.top3 .rk{color:#e0945a}
+.lb-row .lb-av{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#2a3547,#161e2a);display:grid;place-items:center;font-size:.85rem;flex:none}
+.lb-row .lb-n{flex:1;font-family:'Rajdhani';font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lb-row .lb-e{font-family:'Rajdhani';font-weight:700}
+.lb-row.me{background:linear-gradient(90deg,var(--accentDim),transparent);margin:0 -.3rem;padding-left:.45rem;padding-right:.45rem}
+
+/* map mini gallery */
+.maplist{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
+.maptile{aspect-ratio:1;border:1px solid var(--line2);position:relative;overflow:hidden;background-size:cover;background-position:center;transition:transform .14s}
+.maptile:hover{transform:scale(1.05);z-index:2}
+.maptile .mt-n{position:absolute;left:0;right:0;bottom:0;padding:.22rem .35rem;font-family:'Rajdhani';font-weight:700;font-size:.6rem;text-transform:uppercase;background:linear-gradient(transparent,rgba(7,10,15,.92))}
+
+/* live tiles */
+.livegrid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.livetile{background:var(--bg2);border:1px solid var(--line);padding:.7rem;position:relative}
+.livetile .lv{font-family:'Rajdhani';font-weight:700;font-size:1.6rem;line-height:1}
+.livetile .lk{font-size:.66rem;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;margin-top:.25rem}
+.livedot{position:absolute;top:.6rem;right:.6rem;width:8px;height:8px;border-radius:50%;background:var(--good2);box-shadow:0 0 8px var(--good2);animation:pulse 1.4s infinite}
+
 @media(max-width:900px){
+  .dash{grid-template-columns:1fr}
+  .dash-side{position:static}
   .lobby-grid{grid-template-columns:1fr}
   .versus{grid-template-columns:1fr;gap:1rem}
   .vs-mid{flex-direction:row;padding:0}
@@ -267,29 +335,33 @@ input.fld:focus{border-color:var(--accent)}
     </div>
   </section>
 
-  <!-- ===== MENU ===== -->
+  <!-- ===== MENU (dashboard) ===== -->
   <section class="screen" id="screen-menu">
     <div class="hero cut">
-      <div class="eyebrow">Competitive · 5 vs 5</div>
+      <div class="eyebrow">Standoff 2 · Competitive</div>
       <h1>Готов к бою?</h1>
-      <p>Выбери режим (1×1, 2×2 или 5×5) и заходи в лобби. Как наберётся полная команда — через 10 секунд автоматически стартует выбор командиров и бан карт.</p>
+      <p>Выбери режим, заходи в лобби — как соберётся полная команда, через 10 секунд авто-старт: выбор командиров и бан карт.</p>
       <div class="cta-row">
         <button class="btn" onclick="quickMatch()">⚔ Быстрый матч</button>
-      </div>
-      <div class="stat-row">
-        <div class="stat cut"><div class="n">13</div><div class="l">Лобби</div></div>
-        <div class="stat cut"><div class="n" id="stPlayers">—</div><div class="l">Игроков сейчас</div></div>
-        <div class="stat cut"><div class="n">7</div><div class="l">Карт в пуле</div></div>
-        <div class="stat cut"><div class="n">5×5</div><div class="l">Формат</div></div>
+        <button class="btn ghost" onclick="document.getElementById('lobbyList').scrollIntoView({behavior:'smooth',block:'center'})">Список лобби</button>
       </div>
     </div>
-    <div class="section-title">Лобби</div>
-    <div class="modes" id="menuModes">
-      <div class="mode on" data-mode="5v5"><span class="dot"></span>5 на 5</div>
-      <div class="mode" data-mode="2v2">2 на 2</div>
-      <div class="mode" data-mode="1v1">1 на 1</div>
+
+    <div class="dash">
+      <div class="dash-main">
+        <div class="mode-cards" id="modeCards"></div>
+        <div class="widget cut">
+          <div class="widget-h"><span class="wt">🎮 Лобби · <span id="modeTitle">5 на 5</span></span><span class="cnt" id="lobbyCount"></span></div>
+          <div class="widget-b"><div class="lobby-list" id="lobbyList"></div></div>
+        </div>
+      </div>
+      <div class="dash-side">
+        <div class="widget g-cyan cut"><div class="widget-h"><span class="wt">👤 Профиль</span></div><div class="widget-b" id="profileWidget"></div></div>
+        <div class="widget g-green cut"><div class="widget-h"><span class="wt">📡 Сейчас в игре</span></div><div class="widget-b"><div class="livegrid" id="liveWidget"></div></div></div>
+        <div class="widget g-gold cut"><div class="widget-h"><span class="wt">🏆 Топ игроков</span><span class="cnt" id="lbTotal"></span></div><div class="widget-b"><div class="lb" id="lbWidget"></div></div></div>
+        <div class="widget g-violet cut"><div class="widget-h"><span class="wt">🗺️ Карты в пуле</span></div><div class="widget-b"><div class="maplist" id="mapWidget"></div></div></div>
+      </div>
     </div>
-    <div class="lobby-list" id="lobbyList"></div>
   </section>
 
   <!-- ===== LOBBY ===== -->
@@ -386,6 +458,20 @@ const MAPS = {
   prison:   { name:'Prison',    sub:'Lockdown',   img:'', grad:'linear-gradient(135deg,#3b4350,#15191f)' },
 };
 const RANK_COLOR = { legend:'#ff8a1e', master:'#ff5147', elite:'#a06bff', expert:'#33c9ff', pro:'#39d98a' };
+const RANK_TIERS = [
+  { key:'pro',    label:'Pro',       min:0,    color:'#39d98a' },
+  { key:'expert', label:'Expert',    min:1400, color:'#33c9ff' },
+  { key:'elite',  label:'Elite',     min:1700, color:'#a06bff' },
+  { key:'master', label:'Master',    min:2000, color:'#ff5147' },
+  { key:'legend', label:'Legendary', min:2300, color:'#ff8a1e' },
+];
+const MODE_INFO = {
+  '5v5':{ label:'5 на 5', fmt:'5×5', cls:'m-5v5' },
+  '2v2':{ label:'2 на 2', fmt:'2×2', cls:'m-2v2' },
+  '1v1':{ label:'1 на 1', fmt:'1×1', cls:'m-1v1' },
+};
+function rankTier(elo){ let t=RANK_TIERS[0]; for(const x of RANK_TIERS) if(elo>=x.min) t=x; return t; }
+function nextTier(elo){ for(const x of RANK_TIERS) if(x.min>elo) return x; return null; }
 
 let currentUser = null;     // {username, elo, ...}
 let currentLobby = null;    // sanitized lobby or null
@@ -393,6 +479,9 @@ let sse = null;
 let activeScreen = 'auth';
 let authMode = 'login';
 let selectedMenuMode = '5v5';
+let lastLobbyList = [];
+let leaderboardCache = [];
+let myRankPos = null;
 
 const $ = id => document.getElementById(id);
 const meLc = () => (currentUser ? currentUser.username.toLowerCase() : '');
@@ -475,18 +564,41 @@ function connectSSE(){
   });
 }
 
-/* ---------- MENU ---------- */
-$('menuModes').addEventListener('click', e=>{
-  const m=e.target.closest('.mode'); if(!m) return;
-  selectedMenuMode=m.dataset.mode;
-  document.querySelectorAll('#menuModes .mode').forEach(x=>x.classList.toggle('on', x===m));
-  loadMenu();
-});
+/* ---------- MENU (dashboard) ---------- */
+function selectMode(m){ selectedMenuMode=m; renderModeCards(lastLobbyList); renderLobbyList(lastLobbyList); }
+
 async function loadMenu(){
   let list=[];
   try{ list=await api('/api/lobbies'); }catch{}
-  $('stPlayers').textContent=list.reduce((s,l)=>s+l.count,0);
+  lastLobbyList=list;
+  renderModeCards(list);
+  renderLobbyList(list);
+  renderLiveWidget(list);
+  renderProfileWidget();
+  renderLbWidget();
+  renderMapWidget();
+}
+function renderModeCards(list){
+  const el=$('modeCards'); if(!el) return;
+  el.innerHTML=['5v5','2v2','1v1'].map(mode=>{
+    const info=MODE_INFO[mode];
+    const ls=list.filter(l=>l.mode===mode);
+    const open=ls.filter(l=>l.phase==='lobby' && l.count<l.cap).length;
+    const players=ls.reduce((s,l)=>s+l.count,0);
+    return `<div class="mcard-mode ${info.cls} ${mode===selectedMenuMode?'on':''}" onclick="selectMode('${mode}')">
+      <div class="mglow"></div>
+      <div class="mbadge">${open} своб.</div>
+      <div class="mfmt">${info.fmt}</div>
+      <div class="mname">${info.label}</div>
+      <div class="mmeta">${players} игроков · ${ls.length} лобби</div>
+    </div>`;
+  }).join('');
+  $('modeTitle').textContent=MODE_INFO[selectedMenuMode].label;
+}
+function renderLobbyList(list){
   const mine=list.filter(l=>l.mode===selectedMenuMode);
+  const free=mine.filter(l=>l.phase==='lobby' && l.count<l.cap).length;
+  $('lobbyCount').textContent=`${free} свободно`;
   const box=$('lobbyList');
   if(!mine.length){ box.innerHTML='<div class="empty-hint">Лобби загружаются…</div>'; return; }
   box.innerHTML=mine.map(l=>`
@@ -496,9 +608,69 @@ async function loadMenu(){
         <div class="lname">${escapeHtml(l.name)}</div>
         <div class="meta">${({lobby:'Набор игроков',vote:'Выбор командиров',veto:'Идёт бан карт',live:'Матч идёт'})[l.phase]||'—'}</div>
       </div>
-      <div class="seats"><b>${l.count}</b>/${l.cap}</div>
+      <div class="seats"><b style="color:${l.count>=l.cap?'var(--bad)':'var(--ok)'}">${l.count}</b>/${l.cap}</div>
       <button class="btn" style="padding:.6rem 1.2rem;font-size:.9rem" ${l.count>=l.cap||l.phase!=='lobby'?'disabled':''} onclick="joinLobby('${l.id}')">Войти</button>
     </div>`).join('');
+}
+function renderLiveWidget(list){
+  const el=$('liveWidget'); if(!el) return;
+  const players=list.reduce((s,l)=>s+l.count,0);
+  const open=list.filter(l=>l.phase==='lobby').length;
+  const inMatch=list.filter(l=>l.phase==='live').length;
+  el.innerHTML=`
+    <div class="livetile"><span class="livedot"></span><div class="lv">${players}</div><div class="lk">Игроков онлайн</div></div>
+    <div class="livetile"><div class="lv">${open}</div><div class="lk">Идёт набор</div></div>
+    <div class="livetile"><div class="lv" style="color:var(--m5)">${inMatch}</div><div class="lk">Идут матчи</div></div>
+    <div class="livetile"><div class="lv">${list.length}</div><div class="lk">Всего лобби</div></div>`;
+}
+function renderProfileWidget(){
+  const el=$('profileWidget'); if(!el||!currentUser) return;
+  const elo=currentUser.elo||1000;
+  const t=rankTier(elo), nx=nextTier(elo);
+  const prog=nx?Math.max(4,Math.round((elo-t.min)/(nx.min-t.min)*100)):100;
+  const av=currentUser.avatar?`style="background-image:url('${currentUser.avatar}')"`:'';
+  el.innerHTML=`
+    <div class="pf">
+      <div class="pf-av" ${av}>${currentUser.avatar?'':'🎯'}</div>
+      <div>
+        <div class="pf-nick">${escapeHtml(currentUser.game_nick||currentUser.username)}</div>
+        <div class="pf-id">ID ${escapeHtml(currentUser.game_id||'—')}</div>
+        <div class="rankbadge" style="color:${t.color};border:1px solid ${t.color}">◆ ${t.label}</div>
+      </div>
+    </div>
+    <div class="rankrow"><span><b style="color:var(--text)">${elo}</b> ELO</span><span>${nx?`до ${nx.label}: ${nx.min-elo}`:'максимальный ранг'}</span></div>
+    <div class="progress"><i style="width:${prog}%;background:linear-gradient(90deg,${t.color},${nx?nx.color:t.color})"></i></div>
+    <div class="pf-stats">
+      <div class="ps"><div class="v">${elo}</div><div class="k">ELO</div></div>
+      <div class="ps"><div class="v" style="color:${t.color}">${t.label}</div><div class="k">Ранг</div></div>
+      <div class="ps"><div class="v">${myRankPos?('#'+myRankPos):'—'}</div><div class="k">Место</div></div>
+    </div>`;
+}
+function renderLbWidget(){
+  const el=$('lbWidget'); if(!el) return;
+  $('lbTotal').textContent = leaderboardCache.length ? `всего ${myRankPos&&myRankPos>leaderboardCache.length?myRankPos:leaderboardCache.length}+` : '';
+  if(!leaderboardCache.length){ el.innerHTML='<div style="color:var(--dim);font-size:.85rem">Пока нет данных</div>'; return; }
+  el.innerHTML=leaderboardCache.map((p,i)=>{
+    const me=currentUser && p.username.toLowerCase()===meLc();
+    const color=RANK_COLOR[p.rank]||'#8090a3';
+    const medal=['🥇','🥈','🥉'][i]||'🎮';
+    return `<div class="lb-row ${i<3?'top'+(i+1):''} ${me?'me':''}">
+      <div class="rk">${i+1}</div>
+      <div class="lb-av">${medal}</div>
+      <div class="lb-n">${escapeHtml(p.gameNick)}</div>
+      <div class="lb-e" style="color:${color}">${p.elo}</div>
+    </div>`;
+  }).join('');
+}
+function renderMapWidget(){
+  const el=$('mapWidget'); if(!el) return;
+  el.innerHTML=Object.values(MAPS).map(m=>{
+    const bg=m.img?`background-image:url('${m.img}')`:`background-image:${m.grad}`;
+    return `<div class="maptile" style="${bg}" title="${m.name}"><div class="mt-n">${m.name}</div></div>`;
+  }).join('');
+}
+async function loadLeaderboard(){
+  try{ const r=await api('/api/leaderboard'); leaderboardCache=r.top||[]; myRankPos=r.youPos||null; renderLbWidget(); renderProfileWidget(); }catch{}
 }
 async function joinLobby(id){
   try{ currentLobby=await api('/api/lobbies/'+id+'/join',{method:'POST'}); renderFromLobby(); }
@@ -613,7 +785,7 @@ async function sit(side,idx){
 }
 async function leaveLobby(){
   if(currentLobby){ try{ await api('/api/lobbies/'+currentLobby.id+'/leave',{method:'POST'}); }catch{} }
-  currentLobby=null; closeMatch(); showScreen('menu'); loadMenu();
+  currentLobby=null; closeMatch(); showScreen('menu'); loadMenu(); loadLeaderboard();
 }
 
 /* ---------- VOTE (commander poll) render ---------- */
@@ -724,10 +896,11 @@ function closeMatch(){ $('matchModal').classList.remove('show'); }
 async function boot(){
   try{ currentUser=await api('/api/me'); }
   catch{ localStorage.removeItem('token'); showScreen('auth'); return; }
-  $('meNick').textContent=currentUser.username;
+  $('meNick').textContent=currentUser.game_nick||currentUser.username;
   $('meElo').textContent=currentUser.elo;
   if(currentUser.avatar){ const a=$('meAv'); a.textContent=''; a.style.backgroundImage=`url('${currentUser.avatar}')`; }
   connectSSE();
+  loadLeaderboard();
   try{
     const mine=await api('/api/lobbies/mine');
     if(mine){ currentLobby=mine; renderFromLobby(); return; }

@@ -240,6 +240,29 @@ app.get('/api/me', authMiddleware, async (req, res) => {
 });
 
 // ============ USER ROUTES ============
+// Таблица лидеров по ELO (+ позиция запросившего, если залогинен).
+app.get('/api/leaderboard', optionalAuth, async (req, res) => {
+  try {
+    const rows = await all('SELECT username, game_nick, COALESCE(elo, 1000)::int as elo FROM users ORDER BY COALESCE(elo, 1000) DESC, created_at ASC LIMIT 12');
+    const total = (await one('SELECT COUNT(*)::int as c FROM users')).c;
+    let youPos = null;
+    if (req.user) {
+      const me = await one('SELECT COALESCE(elo, 1000)::int as elo FROM users WHERE username = ?', req.user.username);
+      if (me) youPos = (await one('SELECT COUNT(*)::int as c FROM users WHERE COALESCE(elo, 1000) > ?', me.elo)).c + 1;
+    }
+    res.json({
+      total, youPos,
+      top: rows.map(r => {
+        const rk = rankFromElo(r.elo);
+        return { username: r.username, gameNick: r.game_nick || r.username, elo: r.elo, rank: rk.key, rankLabel: rk.label };
+      })
+    });
+  } catch (e) {
+    console.error('leaderboard error:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.get('/api/users/:username', async (req, res) => {
   const u = await one('SELECT username, avatar, is_verified, created_at FROM users WHERE LOWER(username) = LOWER(?)', req.params.username);
   if (!u) return res.status(404).json({ error: 'User not found' });
