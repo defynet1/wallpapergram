@@ -272,7 +272,7 @@ input.fld:focus{border-color:var(--accent)}
     <div class="hero cut">
       <div class="eyebrow">Competitive · 5 vs 5</div>
       <h1>Готов к бою?</h1>
-      <p>Заходи в одно из лобби. Как соберётся 10 человек — через 10 секунд автоматически стартует выбор командиров и бан карт.</p>
+      <p>Выбери режим (1×1, 2×2 или 5×5) и заходи в лобби. Как наберётся полная команда — через 10 секунд автоматически стартует выбор командиров и бан карт.</p>
       <div class="cta-row">
         <button class="btn" onclick="quickMatch()">⚔ Быстрый матч</button>
       </div>
@@ -284,6 +284,11 @@ input.fld:focus{border-color:var(--accent)}
       </div>
     </div>
     <div class="section-title">Лобби</div>
+    <div class="modes" id="menuModes">
+      <div class="mode on" data-mode="5v5"><span class="dot"></span>5 на 5</div>
+      <div class="mode" data-mode="2v2">2 на 2</div>
+      <div class="mode" data-mode="1v1">1 на 1</div>
+    </div>
     <div class="lobby-list" id="lobbyList"></div>
   </section>
 
@@ -302,7 +307,7 @@ input.fld:focus{border-color:var(--accent)}
       <div class="side cut">
         <div class="side-head">
           <span class="t">💬 Чат лобби</span>
-          <span class="cnt"><b id="seatCount">0</b>/10 мест</span>
+          <span class="cnt"><b id="seatCount">0</b>/<span id="seatCap">10</span> мест</span>
         </div>
         <div class="chat" id="chat"></div>
         <div class="chat-input">
@@ -387,6 +392,7 @@ let currentLobby = null;    // sanitized lobby or null
 let sse = null;
 let activeScreen = 'auth';
 let authMode = 'login';
+let selectedMenuMode = '5v5';
 
 const $ = id => document.getElementById(id);
 const meLc = () => (currentUser ? currentUser.username.toLowerCase() : '');
@@ -470,21 +476,28 @@ function connectSSE(){
 }
 
 /* ---------- MENU ---------- */
+$('menuModes').addEventListener('click', e=>{
+  const m=e.target.closest('.mode'); if(!m) return;
+  selectedMenuMode=m.dataset.mode;
+  document.querySelectorAll('#menuModes .mode').forEach(x=>x.classList.toggle('on', x===m));
+  loadMenu();
+});
 async function loadMenu(){
   let list=[];
   try{ list=await api('/api/lobbies'); }catch{}
   $('stPlayers').textContent=list.reduce((s,l)=>s+l.count,0);
+  const mine=list.filter(l=>l.mode===selectedMenuMode);
   const box=$('lobbyList');
-  if(!list.length){ box.innerHTML='<div class="empty-hint">Лобби загружаются…</div>'; return; }
-  box.innerHTML=list.map(l=>`
+  if(!mine.length){ box.innerHTML='<div class="empty-hint">Лобби загружаются…</div>'; return; }
+  box.innerHTML=mine.map(l=>`
     <div class="lrow cut">
       <span class="badge">${({lobby:'Набор',vote:'Командиры',veto:'Бан карт',live:'Матч'})[l.phase]||'—'}</span>
       <div>
         <div class="lname">${escapeHtml(l.name)}</div>
         <div class="meta">${({lobby:'Набор игроков',vote:'Выбор командиров',veto:'Идёт бан карт',live:'Матч идёт'})[l.phase]||'—'}</div>
       </div>
-      <div class="seats"><b>${l.count}</b>/10</div>
-      <button class="btn" style="padding:.6rem 1.2rem;font-size:.9rem" ${l.count>=10||l.phase!=='lobby'?'disabled':''} onclick="joinLobby('${l.id}')">Войти</button>
+      <div class="seats"><b>${l.count}</b>/${l.cap}</div>
+      <button class="btn" style="padding:.6rem 1.2rem;font-size:.9rem" ${l.count>=l.cap||l.phase!=='lobby'?'disabled':''} onclick="joinLobby('${l.id}')">Войти</button>
     </div>`).join('');
 }
 async function joinLobby(id){
@@ -494,8 +507,8 @@ async function joinLobby(id){
 async function quickMatch(){
   try{
     const list=await api('/api/lobbies');
-    // самое заполненное лобби, где ещё есть место — быстрее соберётся
-    const open=list.filter(l=>l.phase==='lobby' && l.count<10).sort((a,b)=>b.count-a.count)[0];
+    // самое заполненное лобби выбранного режима, где ещё есть место — быстрее соберётся
+    const open=list.filter(l=>l.mode===selectedMenuMode && l.phase==='lobby' && l.count<l.cap).sort((a,b)=>b.count-a.count)[0];
     if(open) return joinLobby(open.id);
     toast('Свободных лобби нет — все играют. Попробуй чуть позже.');
   }catch(err){ toast(err.message); }
@@ -558,6 +571,7 @@ function renderLobby(){
   $('teamAlpha').innerHTML=teamHTML('alpha');
   $('teamBravo').innerHTML=teamHTML('bravo');
   $('seatCount').textContent=currentLobby.count;
+  $('seatCap').textContent=currentLobby.cap;
   renderChat();
   updateLobbyHint();
   if(currentLobby.countdownAt) uiTimer=setInterval(updateLobbyHint,500);
@@ -568,7 +582,7 @@ function updateLobbyHint(){
   if(currentLobby.countdownAt){
     hint.innerHTML=`🟢 Лобби заполнено! Старт через <b style="color:var(--accent);font-size:1.1em">${secsLeft(currentLobby.countdownAt)}</b> сек — выбор командиров…`;
   }else{
-    hint.textContent=`Ждём игроков: ${currentLobby.count}/10. Как соберётся 10 — авто-старт через 10 секунд.`;
+    hint.textContent=`Ждём игроков: ${currentLobby.count}/${currentLobby.cap}. Как соберётся ${currentLobby.cap} — авто-старт через 10 секунд.`;
   }
 }
 function renderChat(){

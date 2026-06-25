@@ -247,11 +247,16 @@ app.get('/api/users/:username', async (req, res) => {
 });
 
 // ============ FACEIT LOBBIES (in-memory, realtime via SSE) ============
-// 13 постоянных лобби, созданных сервером (игроки не создают свои).
-// Когда в лобби 10 человек, через FILL_COUNTDOWN_MS автоматически начинается
-// выбор командиров, затем бан карт. Каждое изменение пушится событием `lobby`.
+// Постоянные лобби, созданные сервером (игроки не создают свои), в трёх режимах.
+// Когда лобби заполняется (teamSize*2), через FILL_COUNTDOWN_MS автоматически
+// начинается выбор командиров, затем бан карт. Логика всех режимов одинакова —
+// различается лишь размер команды и порог старта.
 const MAP_POOL = ['sandstone', 'rust', 'province', 'breeze', 'dune', 'hanami', 'prison'];
-const LOBBY_COUNT = 13;            // сколько постоянных лобби
+const MODES = {
+  '5v5': { label: '5 на 5', teamSize: 5, count: 13 }, // основа
+  '2v2': { label: '2 на 2', teamSize: 2, count: 8 },
+  '1v1': { label: '1 на 1', teamSize: 1, count: 8 },
+};
 const FILL_COUNTDOWN_MS = 10000;   // 10 секунд после заполнения до старта
 const VOTE_SECONDS = 20;           // таймер голосования за командиров
 const lobbies = new Map(); // id -> lobby
@@ -276,7 +281,8 @@ async function playerCard(usernameLc) {
   };
 }
 
-function emptyLobbySeats() { return { alpha: [null, null, null, null, null], bravo: [null, null, null, null, null] }; }
+function emptyLobbySeats(n) { return { alpha: Array(n).fill(null), bravo: Array(n).fill(null) }; }
+function lobbyCapacity(lobby) { return lobby.teamSize * 2; } // сколько игроков нужно для старта
 function lobbyCount(lobby) {
   let n = 0;
   for (const side of ['alpha', 'bravo']) for (const p of lobby.seats[side]) if (p) n++;
@@ -369,9 +375,9 @@ function resetLobby(lobby) {
   for (const side of ['alpha', 'bravo']) for (const p of lobby.seats[side]) if (p) p.ready = false;
 }
 
-// Заполнилось 10 человек → запускаем 10-секундный отсчёт до выбора командиров.
+// Заполнилось (teamSize*2) → запускаем 10-секундный отсчёт до выбора командиров.
 function maybeStartFillCountdown(lobby) {
-  if (lobby.phase === 'lobby' && lobbyCount(lobby) >= 10 && !lobby.startTimer) {
+  if (lobby.phase === 'lobby' && lobbyCount(lobby) >= lobbyCapacity(lobby) && !lobby.startTimer) {
     lobby.countdownAt = Date.now() + FILL_COUNTDOWN_MS;
     lobby.startTimer = setTimeout(() => autoStartVote(lobby), FILL_COUNTDOWN_MS);
     pushSys(lobby, 'Лобби заполнено! Выбор командиров начнётся через 10 секунд…');
@@ -379,7 +385,7 @@ function maybeStartFillCountdown(lobby) {
 }
 function autoStartVote(lobby) {
   lobby.startTimer = null; lobby.countdownAt = null;
-  if (lobby.phase !== 'lobby' || lobbyCount(lobby) < 10) return; // набор сорвался
+  if (lobby.phase !== 'lobby' || lobbyCount(lobby) < lobbyCapacity(lobby)) return; // набор сорвался
   lobby.phase = 'vote';
   lobby.votes = { alpha: {}, bravo: {} };
   lobby.commander = { alpha: null, bravo: null };
@@ -399,18 +405,23 @@ function autoFinishVote(lobby) {
   sseBroadcast('lobbies', {});
 }
 
-// Создаём 13 постоянных лобби при старте.
+// Создаём постоянные лобби для каждого режима при старте.
 function seedLobbies() {
-  for (let i = 1; i <= LOBBY_COUNT; i++) {
-    const id = 'lobby-' + i;
-    lobbies.set(id, {
-      id, name: 'Лобби #' + i, mode: 'ranked', createdAt: Date.now(), phase: 'lobby',
-      seats: emptyLobbySeats(), chat: [], veto: null,
-      votes: { alpha: {}, bravo: {} }, commander: { alpha: null, bravo: null },
-      startTimer: null, countdownAt: null, voteTimer: null, voteEndsAt: null
-    });
+  let total = 0;
+  for (const [mode, cfg] of Object.entries(MODES)) {
+    for (let i = 1; i <= cfg.count; i++) {
+      const id = mode + '-' + i;
+      lobbies.set(id, {
+        id, name: `${cfg.label} #${i}`, mode, teamSize: cfg.teamSize,
+        createdAt: Date.now(), phase: 'lobby',
+        seats: emptyLobbySeats(cfg.teamSize), chat: [], veto: null,
+        votes: { alpha: {}, bravo: {} }, commander: { alpha: null, bravo: null },
+        startTimer: null, countdownAt: null, voteTimer: null, voteEndsAt: null
+      });
+      total++;
+    }
   }
-  console.log(`Seeded ${LOBBY_COUNT} lobbies`);
+  console.log(`Seeded ${total} lobbies (${Object.keys(MODES).join(', ')})`);
 }
 function findUserLobby(usernameLc) {
   for (const lobby of lobbies.values()) if (findCard(lobby, usernameLc)) return lobby;
@@ -442,7 +453,7 @@ function sanitizeLobby(lobby) {
   });
   const picker = currentPickerCard(lobby);
   return {
-    id: lobby.id, name: lobby.name, mode: lobby.mode, phase: lobby.phase, hostLc: lobbyHost(lobby),
+    id: lobby.id, name: lobby.name, mode: lobby.mode, teamSize: lobby.teamSize, cap: lobbyCapacity(lobby), phase: lobby.phase, hostLc: lobbyHost(lobby),
     seats: { alpha: seat('alpha'), bravo: seat('bravo') },
     chat: lobby.chat,
     count: lobbyCount(lobby),
@@ -475,7 +486,7 @@ function leaveCurrentLobby(meLc) {
     resetLobby(prev); // лобби постоянное — не удаляем, а возвращаем в чистое состояние
   } else {
     // если набор сорвался (стало меньше 10) — отменяем отсчёт авто-старта
-    if (prev.startTimer && lobbyCount(prev) < 10) {
+    if (prev.startTimer && lobbyCount(prev) < lobbyCapacity(prev)) {
       clearTimeout(prev.startTimer); prev.startTimer = null; prev.countdownAt = null;
       if (prev.phase === 'lobby') pushSys(prev, 'Игрок вышел — отсчёт отменён.');
     }
@@ -487,7 +498,7 @@ function leaveCurrentLobby(meLc) {
 // Список всех лобби (13 постоянных)
 app.get('/api/lobbies', (req, res) => {
   const list = [...lobbies.values()]
-    .map(l => ({ id: l.id, name: l.name, mode: l.mode, phase: l.phase, count: lobbyCount(l) }));
+    .map(l => ({ id: l.id, name: l.name, mode: l.mode, teamSize: l.teamSize, cap: lobbyCapacity(l), phase: l.phase, count: lobbyCount(l) }));
   res.json(list);
 });
 
@@ -505,7 +516,7 @@ app.post('/api/lobbies/:id/join', authMiddleware, async (req, res) => {
     const meLc = req.user.username.toLowerCase();
     if (findCard(lobby, meLc)) return res.json(sanitizeLobby(lobby)); // уже внутри
     if (lobby.phase !== 'lobby') return res.status(400).json({ error: 'Матч уже начался' });
-    if (lobbyCount(lobby) >= 10) return res.status(400).json({ error: 'Лобби заполнено' });
+    if (lobbyCount(lobby) >= lobbyCapacity(lobby)) return res.status(400).json({ error: 'Лобби заполнено' });
 
     leaveCurrentLobby(meLc);
     const card = await playerCard(meLc);
@@ -547,7 +558,7 @@ app.post('/api/lobbies/:id/sit', authMiddleware, (req, res) => {
   if (!lobby) return res.status(404).json({ error: 'Лобби не найдено' });
   if (lobby.phase !== 'lobby') return res.status(400).json({ error: 'Сейчас нельзя пересаживаться' });
   const { side, idx } = req.body || {};
-  if (!['alpha', 'bravo'].includes(side) || !(idx >= 0 && idx < 5)) return res.status(400).json({ error: 'Bad seat' });
+  if (!['alpha', 'bravo'].includes(side) || !(idx >= 0 && idx < lobby.teamSize)) return res.status(400).json({ error: 'Bad seat' });
   if (lobby.seats[side][idx]) return res.status(400).json({ error: 'Место занято' });
 
   const meLc = req.user.username.toLowerCase();
@@ -628,7 +639,7 @@ app.post('/api/lobbies/:id/finish', authMiddleware, (req, res) => {
   // Перезагружаем лобби: чистим состояние и освобождаем места — игроки уходят в меню.
   const members = lobbyMembers(lobby);
   resetLobby(lobby);
-  for (const side of ['alpha', 'bravo']) lobby.seats[side] = [null, null, null, null, null];
+  for (const side of ['alpha', 'bravo']) lobby.seats[side] = Array(lobby.teamSize).fill(null);
   for (const u of members) sseSendToUser(u, 'lobby-closed', { id: lobby.id, reason: 'Матч завершён. Лобби перезагружено.' });
   res.json({ ok: true });
   sseBroadcast('lobbies', {});
