@@ -304,6 +304,54 @@ function findCard(lobby, usernameLc) {
     if (p && p.username.toLowerCase() === usernameLc) return p;
   return null;
 }
+function teamSideOf(lobby, usernameLc) {
+  for (const side of ['alpha', 'bravo']) for (const p of lobby.seats[side])
+    if (p && p.username.toLowerCase() === usernameLc) return side;
+  return null;
+}
+// ---- Голосование за командиров ----
+function voteTally(lobby, side) {
+  const t = {};
+  const votes = (lobby.votes && lobby.votes[side]) || {};
+  for (const voter in votes) { const tgt = votes[voter]; t[tgt] = (t[tgt] || 0) + 1; }
+  return t;
+}
+function computeCommander(lobby, side) {
+  const members = orderedMembers(lobby, side);
+  if (!members.length) return null;
+  const tally = voteTally(lobby, side);
+  let best = members[0].username.toLowerCase(), bestN = -1;
+  for (const p of members) { // в порядке мест → при равенстве голосов побеждает раньше сидящий
+    const n = tally[p.username.toLowerCase()] || 0;
+    if (n > bestN) { bestN = n; best = p.username.toLowerCase(); }
+  }
+  return best;
+}
+function allVoted(lobby) {
+  for (const side of ['alpha', 'bravo']) {
+    const votes = (lobby.votes && lobby.votes[side]) || {};
+    for (const p of orderedMembers(lobby, side)) if (!votes[p.username.toLowerCase()]) return false;
+  }
+  return true;
+}
+function finalizeCommanders(lobby) {
+  lobby.commander = { alpha: computeCommander(lobby, 'alpha'), bravo: computeCommander(lobby, 'bravo') };
+}
+function beginVeto(lobby) {
+  lobby.phase = 'veto';
+  lobby.veto = {
+    turn: 'alpha', picked: null, ptr: { alpha: 0, bravo: 0 },
+    maps: MAP_POOL.map(id => ({ id, banned: false, by: null }))
+  };
+}
+// Сброс лобби после матча: снова можно заходить и собираться.
+function resetLobby(lobby) {
+  lobby.phase = 'lobby';
+  lobby.veto = null;
+  lobby.votes = { alpha: {}, bravo: {} };
+  lobby.commander = { alpha: null, bravo: null };
+  for (const side of ['alpha', 'bravo']) for (const p of lobby.seats[side]) if (p) p.ready = false;
+}
 function findUserLobby(usernameLc) {
   for (const lobby of lobbies.values()) if (findCard(lobby, usernameLc)) return lobby;
   return null;
@@ -325,12 +373,15 @@ function pushSys(lobby, text) {
 }
 
 function sanitizeLobby(lobby) {
+  const commander = lobby.commander || { alpha: null, bravo: null };
   const seat = side => lobby.seats[side].map(p => {
     if (!p) return null;
+    const lc = p.username.toLowerCase();
     return {
       username: p.username, gameNick: p.gameNick, gameId: p.gameId,
       avatar: p.avatar, elo: p.elo, rank: p.rank, rankLabel: p.rankLabel,
-      ready: p.ready, captain: captainOf(lobby, side) === p.username.toLowerCase()
+      ready: p.ready, captain: captainOf(lobby, side) === lc,
+      commander: commander[side] === lc
     };
   });
   const picker = currentPickerCard(lobby);
@@ -339,6 +390,12 @@ function sanitizeLobby(lobby) {
     seats: { alpha: seat('alpha'), bravo: seat('bravo') },
     chat: lobby.chat,
     count: lobbyCount(lobby),
+    commander,
+    vote: lobby.phase === 'vote' ? {
+      votes: lobby.votes,
+      tally: { alpha: voteTally(lobby, 'alpha'), bravo: voteTally(lobby, 'bravo') },
+      allVoted: allVoted(lobby)
+    } : null,
     veto: lobby.veto ? {
       turn: lobby.veto.turn,
       picked: lobby.veto.picked,
@@ -388,7 +445,8 @@ app.post('/api/lobbies', authMiddleware, async (req, res) => {
     const id = newId('L');
     const lobby = {
       id, name, mode, createdAt: Date.now(), hostLc: meLc, phase: 'lobby',
-      seats: emptyLobbySeats(), chat: [], veto: null
+      seats: emptyLobbySeats(), chat: [], veto: null,
+      votes: { alpha: {}, bravo: {} }, commander: { alpha: null, bravo: null }
     };
     lobby.seats.alpha[0] = card;
     pushSys(lobby, `Лобби создано. Капитан Alpha — ${card.username}.`);
@@ -490,27 +548,76 @@ app.post('/api/lobbies/:id/chat', authMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
-// Хост запускает фазу бана карт
-app.post('/api/lobbies/:id/start-veto', authMiddleware, (req, res) => {
+// Хост запускает старт: сначала голосование за командиров (после подтверждений участия)
+app.post('/api/lobbies/:id/start', authMiddleware, (req, res) => {
   const lobby = lobbies.get(req.params.id);
   if (!lobby) return res.status(404).json({ error: 'Лобби не найдено' });
   if (lobby.hostLc !== req.user.username.toLowerCase()) return res.status(403).json({ error: 'Только хост может начать' });
   if (lobby.phase !== 'lobby') return res.status(400).json({ error: 'Уже идёт' });
   if (lobby.seats.alpha.filter(Boolean).length < 1 || lobby.seats.bravo.filter(Boolean).length < 1)
     return res.status(400).json({ error: 'Нужно хотя бы по одному игроку в каждой команде' });
-  // Выбор карт доступен только после того, как участие подтвердили минимум 2 игрока.
   const readyCount = [...lobby.seats.alpha, ...lobby.seats.bravo].filter(p => p && p.ready).length;
   if (readyCount < 2)
     return res.status(400).json({ error: 'Участие должны подтвердить минимум 2 игрока' });
 
-  lobby.phase = 'veto';
-  lobby.veto = {
-    turn: 'alpha', picked: null,
-    ptr: { alpha: 0, bravo: 0 }, // указатель ротации игроков внутри команды
-    maps: MAP_POOL.map(id => ({ id, banned: false, by: null }))
-  };
+  lobby.phase = 'vote';
+  lobby.votes = { alpha: {}, bravo: {} };
+  lobby.commander = { alpha: null, bravo: null };
+  pushSys(lobby, 'Голосование за командиров команд началось. Выберите командира своей команды.');
+  res.json(sanitizeLobby(lobby));
+  pushLobby(lobby);
+  sseBroadcast('lobbies', {});
+});
+
+// Голос за командира своей команды
+app.post('/api/lobbies/:id/vote-commander', authMiddleware, (req, res) => {
+  const lobby = lobbies.get(req.params.id);
+  if (!lobby || lobby.phase !== 'vote') return res.status(400).json({ error: 'Сейчас не голосование' });
+  const meLc = req.user.username.toLowerCase();
+  const mySide = teamSideOf(lobby, meLc);
+  if (!mySide) return res.status(403).json({ error: 'Ты не в этом лобби' });
+  const target = (req.body.target || '').toLowerCase();
+  if (teamSideOf(lobby, target) !== mySide)
+    return res.status(400).json({ error: 'Голосовать можно только за игрока своей команды' });
+
+  lobby.votes[mySide][meLc] = target;
+  // Когда проголосовали все — командиры выбраны и сразу начинается бан карт.
+  if (allVoted(lobby)) {
+    finalizeCommanders(lobby);
+    beginVeto(lobby);
+    const ca = findCard(lobby, lobby.commander.alpha), cb = findCard(lobby, lobby.commander.bravo);
+    pushSys(lobby, `Командиры выбраны: ${ca ? (ca.gameNick || ca.username) : '—'} (Alpha), ${cb ? (cb.gameNick || cb.username) : '—'} (Bravo). Начинается бан карт.`);
+    sseBroadcast('lobbies', {});
+  }
+  res.json(sanitizeLobby(lobby));
+  pushLobby(lobby);
+});
+
+// Хост форсит переход к бану карт, не дожидаясь всех голосов
+app.post('/api/lobbies/:id/start-veto', authMiddleware, (req, res) => {
+  const lobby = lobbies.get(req.params.id);
+  if (!lobby) return res.status(404).json({ error: 'Лобби не найдено' });
+  if (lobby.hostLc !== req.user.username.toLowerCase()) return res.status(403).json({ error: 'Только хост может' });
+  if (lobby.phase !== 'vote') return res.status(400).json({ error: 'Сейчас не голосование' });
+
+  finalizeCommanders(lobby);
+  beginVeto(lobby);
   const first = currentPickerCard(lobby);
-  pushSys(lobby, `Фаза бана карт началась. Первым банит ${first ? (first.gameNick || first.username) : 'Team Alpha'} (Team Alpha).`);
+  pushSys(lobby, `Командиры выбраны. Бан карт начался — первым банит ${first ? (first.gameNick || first.username) : 'Team Alpha'} (Team Alpha).`);
+  res.json(sanitizeLobby(lobby));
+  pushLobby(lobby);
+  sseBroadcast('lobbies', {});
+});
+
+// Завершить матч — лобби перезагружается, в него снова можно заходить.
+app.post('/api/lobbies/:id/finish', authMiddleware, (req, res) => {
+  const lobby = lobbies.get(req.params.id);
+  if (!lobby) return res.status(404).json({ error: 'Лобби не найдено' });
+  if (lobby.hostLc !== req.user.username.toLowerCase()) return res.status(403).json({ error: 'Только хост может завершить матч' });
+  if (lobby.phase !== 'live') return res.status(400).json({ error: 'Матч не идёт' });
+
+  resetLobby(lobby);
+  pushSys(lobby, 'Матч завершён. Лобби перезагружено — снова можно заходить и собираться.');
   res.json(sanitizeLobby(lobby));
   pushLobby(lobby);
   sseBroadcast('lobbies', {});
@@ -537,8 +644,8 @@ app.post('/api/lobbies/:id/ban', authMiddleware, (req, res) => {
   const left = lobby.veto.maps.filter(x => !x.banned);
   if (left.length === 1) {
     lobby.veto.picked = left[0].id;
-    lobby.phase = 'done';
-    pushSys(lobby, `Карта матча — ${left[0].id}. Подключайтесь к игре!`);
+    lobby.phase = 'live'; // матч идёт: лобби сохраняется, но войти в него нельзя
+    pushSys(lobby, `Карта матча — ${left[0].id}. Матч начался — подключайтесь к игре!`);
     sseBroadcast('lobbies', {});
   } else {
     lobby.veto.ptr[turn]++;                             // следующий игрок этой команды — на её следующем ходу
