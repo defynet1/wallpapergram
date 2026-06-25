@@ -363,9 +363,10 @@ const MAPS = {
   sandstone:{ name:'Sandstone', sub:'Classic',   img:'', grad:'linear-gradient(135deg,#5a4326,#2a1f12)' },
   rust:     { name:'Rust',      sub:'Industrial', img:'', grad:'linear-gradient(135deg,#6b3b22,#2e1810)' },
   province: { name:'Province',  sub:'Town',       img:'', grad:'linear-gradient(135deg,#3a4a2c,#18230f)' },
-  sakura:   { name:'Sakura',    sub:'Temple',     img:'', grad:'linear-gradient(135deg,#5a2c44,#26101c)' },
   breeze:   { name:'Breeze',    sub:'Coast',      img:'', grad:'linear-gradient(135deg,#1f5560,#0c2226)' },
   dune:     { name:'Dune',      sub:'Desert',     img:'', grad:'linear-gradient(135deg,#7a5a2a,#332512)' },
+  hanami:   { name:'Hanami',    sub:'Blossom',    img:'', grad:'linear-gradient(135deg,#8a3a5c,#2c1320)' },
+  prison:   { name:'Prison',    sub:'Lockdown',   img:'', grad:'linear-gradient(135deg,#3b4350,#15191f)' },
 };
 const RANK_COLOR = { legend:'#ff8a1e', master:'#ff5147', elite:'#a06bff', expert:'#33c9ff', pro:'#39d98a' };
 
@@ -544,12 +545,14 @@ function renderLobby(){
   rb.classList.toggle('alpha', !!(me&&me.ready));
 
   const isHost=currentLobby.hostLc===meLc();
+  const readyCount=all.filter(p=>p.ready).length;
+  const canStart=readyCount>=2; // выбор карт доступен после 2 подтверждений участия
   const startBtn=$('startBtn');
   startBtn.style.display=isHost?'':'none';
-  const readyCount=all.filter(p=>p.ready).length;
-  $('lobbyHint').textContent=isHost
-    ? `Готовы ${readyCount}/${currentLobby.count}. Жми «Начать бан карт», когда соберётесь.`
-    : `Готовы ${readyCount}/${currentLobby.count}. Ждём, пока хост начнёт.`;
+  startBtn.disabled=!canStart;
+  $('lobbyHint').textContent = canStart
+    ? (isHost ? `Подтвердили участие: ${readyCount}. Можно начинать бан карт.` : `Подтвердили участие: ${readyCount}. Ждём, пока хост начнёт.`)
+    : `Подтвердили участие: ${readyCount}/2. Нужно минимум 2 игрока — жмите «Я готов».`;
 }
 function renderChat(){
   const c=$('chat');

@@ -249,7 +249,7 @@ app.get('/api/users/:username', async (req, res) => {
 // ============ FACEIT LOBBIES (in-memory, realtime via SSE) ============
 // Лобби — эфемерное игровое состояние, живёт в памяти (как и SSE-соединения).
 // Каждое изменение пушится участникам событием `lobby`; чат — событием `lobby-chat`.
-const MAP_POOL = ['sandstone', 'rust', 'province', 'sakura', 'breeze', 'dune'];
+const MAP_POOL = ['sandstone', 'rust', 'province', 'breeze', 'dune', 'hanami', 'prison'];
 const lobbies = new Map(); // id -> lobby
 
 function rankFromElo(elo) {
@@ -498,6 +498,10 @@ app.post('/api/lobbies/:id/start-veto', authMiddleware, (req, res) => {
   if (lobby.phase !== 'lobby') return res.status(400).json({ error: 'Уже идёт' });
   if (lobby.seats.alpha.filter(Boolean).length < 1 || lobby.seats.bravo.filter(Boolean).length < 1)
     return res.status(400).json({ error: 'Нужно хотя бы по одному игроку в каждой команде' });
+  // Выбор карт доступен только после того, как участие подтвердили минимум 2 игрока.
+  const readyCount = [...lobby.seats.alpha, ...lobby.seats.bravo].filter(p => p && p.ready).length;
+  if (readyCount < 2)
+    return res.status(400).json({ error: 'Участие должны подтвердить минимум 2 игрока' });
 
   lobby.phase = 'veto';
   lobby.veto = {
