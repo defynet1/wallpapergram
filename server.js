@@ -247,9 +247,13 @@ app.get('/api/users/:username', async (req, res) => {
 });
 
 // ============ FACEIT LOBBIES (in-memory, realtime via SSE) ============
-// Лобби — эфемерное игровое состояние, живёт в памяти (как и SSE-соединения).
-// Каждое изменение пушится участникам событием `lobby`; чат — событием `lobby-chat`.
+// 13 постоянных лобби, созданных сервером (игроки не создают свои).
+// Когда в лобби 10 человек, через FILL_COUNTDOWN_MS автоматически начинается
+// выбор командиров, затем бан карт. Каждое изменение пушится событием `lobby`.
 const MAP_POOL = ['sandstone', 'rust', 'province', 'breeze', 'dune', 'hanami', 'prison'];
+const LOBBY_COUNT = 13;            // сколько постоянных лобби
+const FILL_COUNTDOWN_MS = 10000;   // 10 секунд после заполнения до старта
+const VOTE_SECONDS = 20;           // таймер голосования за командиров
 const lobbies = new Map(); // id -> lobby
 
 function rankFromElo(elo) {
@@ -344,13 +348,69 @@ function beginVeto(lobby) {
     maps: MAP_POOL.map(id => ({ id, banned: false, by: null }))
   };
 }
-// Сброс лобби после матча: снова можно заходить и собираться.
+// Хост — первый по местам игрок (нужен для «завершить матч» / форса). Динамически.
+function lobbyHost(lobby) {
+  const m = lobbyMembers(lobby);
+  return m.length ? m[0].toLowerCase() : null;
+}
+function clearLobbyTimers(lobby) {
+  if (lobby.startTimer) { clearTimeout(lobby.startTimer); lobby.startTimer = null; }
+  if (lobby.voteTimer) { clearTimeout(lobby.voteTimer); lobby.voteTimer = null; }
+  lobby.countdownAt = null;
+  lobby.voteEndsAt = null;
+}
+// Сброс лобби после матча (или когда опустело): снова можно заходить и собираться.
 function resetLobby(lobby) {
+  clearLobbyTimers(lobby);
   lobby.phase = 'lobby';
   lobby.veto = null;
   lobby.votes = { alpha: {}, bravo: {} };
   lobby.commander = { alpha: null, bravo: null };
   for (const side of ['alpha', 'bravo']) for (const p of lobby.seats[side]) if (p) p.ready = false;
+}
+
+// Заполнилось 10 человек → запускаем 10-секундный отсчёт до выбора командиров.
+function maybeStartFillCountdown(lobby) {
+  if (lobby.phase === 'lobby' && lobbyCount(lobby) >= 10 && !lobby.startTimer) {
+    lobby.countdownAt = Date.now() + FILL_COUNTDOWN_MS;
+    lobby.startTimer = setTimeout(() => autoStartVote(lobby), FILL_COUNTDOWN_MS);
+    pushSys(lobby, 'Лобби заполнено! Выбор командиров начнётся через 10 секунд…');
+  }
+}
+function autoStartVote(lobby) {
+  lobby.startTimer = null; lobby.countdownAt = null;
+  if (lobby.phase !== 'lobby' || lobbyCount(lobby) < 10) return; // набор сорвался
+  lobby.phase = 'vote';
+  lobby.votes = { alpha: {}, bravo: {} };
+  lobby.commander = { alpha: null, bravo: null };
+  lobby.voteEndsAt = Date.now() + VOTE_SECONDS * 1000;
+  lobby.voteTimer = setTimeout(() => autoFinishVote(lobby), VOTE_SECONDS * 1000);
+  pushSys(lobby, 'Лобби собрано! Голосуйте за командира своей команды.');
+  pushLobby(lobby);
+  sseBroadcast('lobbies', {});
+}
+function autoFinishVote(lobby) {
+  lobby.voteTimer = null; lobby.voteEndsAt = null;
+  if (lobby.phase !== 'vote') return;
+  finalizeCommanders(lobby);
+  beginVeto(lobby);
+  pushSys(lobby, 'Командиры выбраны. Начинается бан карт.');
+  pushLobby(lobby);
+  sseBroadcast('lobbies', {});
+}
+
+// Создаём 13 постоянных лобби при старте.
+function seedLobbies() {
+  for (let i = 1; i <= LOBBY_COUNT; i++) {
+    const id = 'lobby-' + i;
+    lobbies.set(id, {
+      id, name: 'Лобби #' + i, mode: 'ranked', createdAt: Date.now(), phase: 'lobby',
+      seats: emptyLobbySeats(), chat: [], veto: null,
+      votes: { alpha: {}, bravo: {} }, commander: { alpha: null, bravo: null },
+      startTimer: null, countdownAt: null, voteTimer: null, voteEndsAt: null
+    });
+  }
+  console.log(`Seeded ${LOBBY_COUNT} lobbies`);
 }
 function findUserLobby(usernameLc) {
   for (const lobby of lobbies.values()) if (findCard(lobby, usernameLc)) return lobby;
@@ -362,10 +422,6 @@ function removeFromLobby(lobby, usernameLc) {
     if (p && p.username.toLowerCase() === usernameLc) { lobby.seats[side][i] = null; return true; }
   }
   return false;
-}
-function recomputeHost(lobby) {
-  const m = lobbyMembers(lobby);
-  if (m.length) lobby.hostLc = m[0].toLowerCase();
 }
 function pushSys(lobby, text) {
   lobby.chat.push({ id: newId('m'), sys: true, text, ts: Date.now() });
@@ -386,10 +442,12 @@ function sanitizeLobby(lobby) {
   });
   const picker = currentPickerCard(lobby);
   return {
-    id: lobby.id, name: lobby.name, mode: lobby.mode, phase: lobby.phase, hostLc: lobby.hostLc,
+    id: lobby.id, name: lobby.name, mode: lobby.mode, phase: lobby.phase, hostLc: lobbyHost(lobby),
     seats: { alpha: seat('alpha'), bravo: seat('bravo') },
     chat: lobby.chat,
     count: lobbyCount(lobby),
+    countdownAt: lobby.countdownAt || null,   // отсчёт до старта (10 человек собрано)
+    voteEndsAt: lobby.voteEndsAt || null,      // таймер голосования за командиров
     commander,
     vote: lobby.phase === 'vote' ? {
       votes: lobby.votes,
@@ -413,15 +471,22 @@ function leaveCurrentLobby(meLc) {
   const prev = findUserLobby(meLc);
   if (!prev) return;
   removeFromLobby(prev, meLc);
-  if (lobbyCount(prev) === 0) { lobbies.delete(prev.id); }
-  else { recomputeHost(prev); pushLobby(prev); }
+  if (lobbyCount(prev) === 0) {
+    resetLobby(prev); // лобби постоянное — не удаляем, а возвращаем в чистое состояние
+  } else {
+    // если набор сорвался (стало меньше 10) — отменяем отсчёт авто-старта
+    if (prev.startTimer && lobbyCount(prev) < 10) {
+      clearTimeout(prev.startTimer); prev.startTimer = null; prev.countdownAt = null;
+      if (prev.phase === 'lobby') pushSys(prev, 'Игрок вышел — отсчёт отменён.');
+    }
+    pushLobby(prev);
+  }
   sseBroadcast('lobbies', {});
 }
 
-// Список открытых лобби (для меню)
+// Список всех лобби (13 постоянных)
 app.get('/api/lobbies', (req, res) => {
   const list = [...lobbies.values()]
-    .filter(l => lobbyCount(l) > 0)
     .map(l => ({ id: l.id, name: l.name, mode: l.mode, phase: l.phase, count: lobbyCount(l) }));
   res.json(list);
 });
@@ -430,33 +495,6 @@ app.get('/api/lobbies', (req, res) => {
 app.get('/api/lobbies/mine', authMiddleware, (req, res) => {
   const lobby = findUserLobby(req.user.username.toLowerCase());
   res.json(lobby ? sanitizeLobby(lobby) : null);
-});
-
-// Создать лобби
-app.post('/api/lobbies', authMiddleware, async (req, res) => {
-  try {
-    const meLc = req.user.username.toLowerCase();
-    leaveCurrentLobby(meLc);
-    const card = await playerCard(meLc);
-    if (!card) return res.status(404).json({ error: 'User not found' });
-
-    const name = (req.body.name || '').trim().slice(0, 40) || `Лобби ${card.username}`;
-    const mode = ['ranked', 'casual', 'tournament'].includes(req.body.mode) ? req.body.mode : 'ranked';
-    const id = newId('L');
-    const lobby = {
-      id, name, mode, createdAt: Date.now(), hostLc: meLc, phase: 'lobby',
-      seats: emptyLobbySeats(), chat: [], veto: null,
-      votes: { alpha: {}, bravo: {} }, commander: { alpha: null, bravo: null }
-    };
-    lobby.seats.alpha[0] = card;
-    pushSys(lobby, `Лобби создано. Капитан Alpha — ${card.username}.`);
-    lobbies.set(id, lobby);
-    res.json(sanitizeLobby(lobby));
-    sseBroadcast('lobbies', {});
-  } catch (e) {
-    console.error('create lobby error:', e);
-    res.status(500).json({ error: 'Server error' });
-  }
 });
 
 // Зайти в лобби
@@ -482,7 +520,8 @@ app.post('/api/lobbies/:id/join', authMiddleware, async (req, res) => {
     }
     if (!placed) return res.status(400).json({ error: 'Лобби заполнено' });
 
-    pushSys(lobby, `${card.username} зашёл в лобби.`);
+    pushSys(lobby, `${card.gameNick || card.username} зашёл в лобби.`);
+    maybeStartFillCountdown(lobby); // 10 человек → запускаем отсчёт авто-старта
     res.json(sanitizeLobby(lobby));
     pushLobby(lobby);
     sseBroadcast('lobbies', {});
@@ -520,17 +559,6 @@ app.post('/api/lobbies/:id/sit', authMiddleware, (req, res) => {
   pushLobby(lobby);
 });
 
-// Готовность
-app.post('/api/lobbies/:id/ready', authMiddleware, (req, res) => {
-  const lobby = lobbies.get(req.params.id);
-  if (!lobby) return res.status(404).json({ error: 'Лобби не найдено' });
-  const card = findCard(lobby, req.user.username.toLowerCase());
-  if (!card) return res.status(400).json({ error: 'Ты не в этом лобби' });
-  card.ready = !card.ready;
-  res.json(sanitizeLobby(lobby));
-  pushLobby(lobby);
-});
-
 // Чат лобби
 app.post('/api/lobbies/:id/chat', authMiddleware, (req, res) => {
   const lobby = lobbies.get(req.params.id);
@@ -548,27 +576,6 @@ app.post('/api/lobbies/:id/chat', authMiddleware, (req, res) => {
   res.json({ ok: true });
 });
 
-// Хост запускает старт: сначала голосование за командиров (после подтверждений участия)
-app.post('/api/lobbies/:id/start', authMiddleware, (req, res) => {
-  const lobby = lobbies.get(req.params.id);
-  if (!lobby) return res.status(404).json({ error: 'Лобби не найдено' });
-  if (lobby.hostLc !== req.user.username.toLowerCase()) return res.status(403).json({ error: 'Только хост может начать' });
-  if (lobby.phase !== 'lobby') return res.status(400).json({ error: 'Уже идёт' });
-  if (lobby.seats.alpha.filter(Boolean).length < 1 || lobby.seats.bravo.filter(Boolean).length < 1)
-    return res.status(400).json({ error: 'Нужно хотя бы по одному игроку в каждой команде' });
-  const readyCount = [...lobby.seats.alpha, ...lobby.seats.bravo].filter(p => p && p.ready).length;
-  if (readyCount < 2)
-    return res.status(400).json({ error: 'Участие должны подтвердить минимум 2 игрока' });
-
-  lobby.phase = 'vote';
-  lobby.votes = { alpha: {}, bravo: {} };
-  lobby.commander = { alpha: null, bravo: null };
-  pushSys(lobby, 'Голосование за командиров команд началось. Выберите командира своей команды.');
-  res.json(sanitizeLobby(lobby));
-  pushLobby(lobby);
-  sseBroadcast('lobbies', {});
-});
-
 // Голос за командира своей команды
 app.post('/api/lobbies/:id/vote-commander', authMiddleware, (req, res) => {
   const lobby = lobbies.get(req.params.id);
@@ -583,6 +590,7 @@ app.post('/api/lobbies/:id/vote-commander', authMiddleware, (req, res) => {
   lobby.votes[mySide][meLc] = target;
   // Когда проголосовали все — командиры выбраны и сразу начинается бан карт.
   if (allVoted(lobby)) {
+    clearLobbyTimers(lobby); // отменяем таймер голосования
     finalizeCommanders(lobby);
     beginVeto(lobby);
     const ca = findCard(lobby, lobby.commander.alpha), cb = findCard(lobby, lobby.commander.bravo);
@@ -597,9 +605,10 @@ app.post('/api/lobbies/:id/vote-commander', authMiddleware, (req, res) => {
 app.post('/api/lobbies/:id/start-veto', authMiddleware, (req, res) => {
   const lobby = lobbies.get(req.params.id);
   if (!lobby) return res.status(404).json({ error: 'Лобби не найдено' });
-  if (lobby.hostLc !== req.user.username.toLowerCase()) return res.status(403).json({ error: 'Только хост может' });
+  if (lobbyHost(lobby) !== req.user.username.toLowerCase()) return res.status(403).json({ error: 'Только хост может' });
   if (lobby.phase !== 'vote') return res.status(400).json({ error: 'Сейчас не голосование' });
 
+  clearLobbyTimers(lobby);
   finalizeCommanders(lobby);
   beginVeto(lobby);
   const first = currentPickerCard(lobby);
@@ -613,13 +622,15 @@ app.post('/api/lobbies/:id/start-veto', authMiddleware, (req, res) => {
 app.post('/api/lobbies/:id/finish', authMiddleware, (req, res) => {
   const lobby = lobbies.get(req.params.id);
   if (!lobby) return res.status(404).json({ error: 'Лобби не найдено' });
-  if (lobby.hostLc !== req.user.username.toLowerCase()) return res.status(403).json({ error: 'Только хост может завершить матч' });
+  if (lobbyHost(lobby) !== req.user.username.toLowerCase()) return res.status(403).json({ error: 'Только хост может завершить матч' });
   if (lobby.phase !== 'live') return res.status(400).json({ error: 'Матч не идёт' });
 
+  // Перезагружаем лобби: чистим состояние и освобождаем места — игроки уходят в меню.
+  const members = lobbyMembers(lobby);
   resetLobby(lobby);
-  pushSys(lobby, 'Матч завершён. Лобби перезагружено — снова можно заходить и собираться.');
-  res.json(sanitizeLobby(lobby));
-  pushLobby(lobby);
+  for (const side of ['alpha', 'bravo']) lobby.seats[side] = [null, null, null, null, null];
+  for (const u of members) sseSendToUser(u, 'lobby-closed', { id: lobby.id, reason: 'Матч завершён. Лобби перезагружено.' });
+  res.json({ ok: true });
   sseBroadcast('lobbies', {});
 });
 
@@ -693,6 +704,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 (async () => {
   try {
     await initDb();
+    seedLobbies();
     app.listen(PORT, () => {
       console.log(`Server on :${PORT}`);
       console.log(`DB: ${process.env.DATABASE_URL ? 'connected via DATABASE_URL' : 'no DATABASE_URL!'}`);

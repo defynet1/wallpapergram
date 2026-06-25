@@ -272,24 +272,18 @@ input.fld:focus{border-color:var(--accent)}
     <div class="hero cut">
       <div class="eyebrow">Competitive · 5 vs 5</div>
       <h1>Готов к бою?</h1>
-      <p>Собери команду в лобби, забань неудобные карты и врывайся в матч. Честный матчмейкинг по ELO.</p>
-      <div class="modes" id="modes">
-        <div class="mode on" data-mode="ranked"><span class="dot"></span>Рейтинг 5×5</div>
-        <div class="mode" data-mode="casual">Дружеский</div>
-        <div class="mode" data-mode="tournament">Турнир</div>
-      </div>
+      <p>Заходи в одно из лобби. Как соберётся 10 человек — через 10 секунд автоматически стартует выбор командиров и бан карт.</p>
       <div class="cta-row">
-        <button class="btn" onclick="createLobby()">⚔ Создать лобби</button>
-        <button class="btn ghost" onclick="quickMatch()">Найти матч</button>
+        <button class="btn" onclick="quickMatch()">⚔ Быстрый матч</button>
       </div>
       <div class="stat-row">
-        <div class="stat cut"><div class="n" id="stOnline">—</div><div class="l">Лобби онлайн</div></div>
-        <div class="stat cut"><div class="n" id="stPlayers">—</div><div class="l">Игроков в лобби</div></div>
+        <div class="stat cut"><div class="n">13</div><div class="l">Лобби</div></div>
+        <div class="stat cut"><div class="n" id="stPlayers">—</div><div class="l">Игроков сейчас</div></div>
         <div class="stat cut"><div class="n">7</div><div class="l">Карт в пуле</div></div>
         <div class="stat cut"><div class="n">5×5</div><div class="l">Формат</div></div>
       </div>
     </div>
-    <div class="section-title">Открытые лобби</div>
+    <div class="section-title">Лобби</div>
     <div class="lobby-list" id="lobbyList"></div>
   </section>
 
@@ -318,8 +312,6 @@ input.fld:focus{border-color:var(--accent)}
       </div>
     </div>
     <div class="lobby-foot">
-      <button class="btn" id="readyBtn" onclick="toggleReady()">✓ Я готов</button>
-      <button class="btn alpha" id="startBtn" onclick="startProcess()">Начать →</button>
       <button class="btn ghost" onclick="leaveLobby()">← Выйти</button>
       <span class="hint" id="lobbyHint"></span>
     </div>
@@ -394,7 +386,6 @@ let currentUser = null;     // {username, elo, ...}
 let currentLobby = null;    // sanitized lobby or null
 let sse = null;
 let activeScreen = 'auth';
-let selectedMode = 'ranked';
 let authMode = 'login';
 
 const $ = id => document.getElementById(id);
@@ -468,36 +459,33 @@ function connectSSE(){
     }catch{}
   });
   sse.addEventListener('lobbies', ()=>{ if(activeScreen==='menu') loadMenu(); });
+  sse.addEventListener('lobby-closed', e=>{
+    try{ const d=JSON.parse(e.data);
+      if(currentLobby && d.id===currentLobby.id){
+        currentLobby=null; clearUiTimer(); closeMatch();
+        toast(d.reason||'Матч завершён.'); showScreen('menu'); loadMenu();
+      }
+    }catch{}
+  });
 }
 
 /* ---------- MENU ---------- */
-$('modes').addEventListener('click', e=>{
-  const m=e.target.closest('.mode'); if(!m) return;
-  selectedMode=m.dataset.mode;
-  document.querySelectorAll('#modes .mode').forEach(x=>x.classList.toggle('on', x===m));
-});
 async function loadMenu(){
   let list=[];
   try{ list=await api('/api/lobbies'); }catch{}
-  $('stOnline').textContent=list.length;
   $('stPlayers').textContent=list.reduce((s,l)=>s+l.count,0);
-  const modeName={ranked:'Рейтинг',casual:'Дружеский',tournament:'Турнир'};
   const box=$('lobbyList');
-  if(!list.length){ box.innerHTML='<div class="empty-hint">Открытых лобби нет. Создай своё — друзья смогут зайти.</div>'; return; }
+  if(!list.length){ box.innerHTML='<div class="empty-hint">Лобби загружаются…</div>'; return; }
   box.innerHTML=list.map(l=>`
     <div class="lrow cut">
-      <span class="badge">${modeName[l.mode]||l.mode}</span>
+      <span class="badge">${({lobby:'Набор',vote:'Командиры',veto:'Бан карт',live:'Матч'})[l.phase]||'—'}</span>
       <div>
         <div class="lname">${escapeHtml(l.name)}</div>
-        <div class="meta">${({lobby:'Набор игроков',vote:'Выбор командиров',veto:'Идёт бан карт',live:'Матч идёт'})[l.phase]||'Матч идёт'}</div>
+        <div class="meta">${({lobby:'Набор игроков',vote:'Выбор командиров',veto:'Идёт бан карт',live:'Матч идёт'})[l.phase]||'—'}</div>
       </div>
       <div class="seats"><b>${l.count}</b>/10</div>
       <button class="btn" style="padding:.6rem 1.2rem;font-size:.9rem" ${l.count>=10||l.phase!=='lobby'?'disabled':''} onclick="joinLobby('${l.id}')">Войти</button>
     </div>`).join('');
-}
-async function createLobby(){
-  try{ currentLobby=await api('/api/lobbies',{method:'POST',body:{mode:selectedMode}}); renderFromLobby(); }
-  catch(err){ toast(err.message); }
 }
 async function joinLobby(id){
   try{ currentLobby=await api('/api/lobbies/'+id+'/join',{method:'POST'}); renderFromLobby(); }
@@ -506,14 +494,21 @@ async function joinLobby(id){
 async function quickMatch(){
   try{
     const list=await api('/api/lobbies');
-    const open=list.find(l=>l.phase==='lobby' && l.count<10);
+    // самое заполненное лобби, где ещё есть место — быстрее соберётся
+    const open=list.filter(l=>l.phase==='lobby' && l.count<10).sort((a,b)=>b.count-a.count)[0];
     if(open) return joinLobby(open.id);
-    return createLobby();
+    toast('Свободных лобби нет — все играют. Попробуй чуть позже.');
   }catch(err){ toast(err.message); }
 }
 
+/* ---------- countdown ticker (для авто-старта и таймера голосования) ---------- */
+let uiTimer=null;
+function clearUiTimer(){ if(uiTimer){ clearInterval(uiTimer); uiTimer=null; } }
+function secsLeft(ts){ return Math.max(0, Math.ceil((ts-Date.now())/1000)); }
+
 /* ---------- routing by lobby phase ---------- */
 function renderFromLobby(){
+  clearUiTimer();
   if(!currentLobby){ showScreen('menu'); loadMenu(); return; }
   const ph=currentLobby.phase;
   if(ph==='lobby'){ showScreen('lobby'); renderLobby(); closeMatch(); }
@@ -545,7 +540,6 @@ function slotHTML(p, side, idx){
       <div class="prank"><span class="rank-dot" style="background:${color}"></span>${p.rankLabel}${p.gameId?` · ID ${escapeHtml(p.gameId)}`:''}</div>
     </div>
     <div class="pelo">${p.elo}</div>
-    <div class="rdy ${p.ready?'on':''}" title="${p.ready?'Готов':'Не готов'}"></div>
   </div>`;
 }
 function teamHTML(side){
@@ -565,22 +559,17 @@ function renderLobby(){
   $('teamBravo').innerHTML=teamHTML('bravo');
   $('seatCount').textContent=currentLobby.count;
   renderChat();
-
-  const all=[...currentLobby.seats.alpha,...currentLobby.seats.bravo].filter(Boolean);
-  const me=all.find(p=>p.username.toLowerCase()===meLc());
-  const rb=$('readyBtn');
-  rb.textContent = me&&me.ready ? '✓ Готов' : '✓ Я готов';
-  rb.classList.toggle('alpha', !!(me&&me.ready));
-
-  const isHost=currentLobby.hostLc===meLc();
-  const readyCount=all.filter(p=>p.ready).length;
-  const canStart=readyCount>=2; // выбор карт доступен после 2 подтверждений участия
-  const startBtn=$('startBtn');
-  startBtn.style.display=isHost?'':'none';
-  startBtn.disabled=!canStart;
-  $('lobbyHint').textContent = canStart
-    ? (isHost ? `Подтвердили участие: ${readyCount}. Жми «Начать» — сперва выбор командиров, затем бан карт.` : `Подтвердили участие: ${readyCount}. Ждём, пока хост начнёт.`)
-    : `Подтвердили участие: ${readyCount}/2. Нужно минимум 2 игрока — жмите «Я готов».`;
+  updateLobbyHint();
+  if(currentLobby.countdownAt) uiTimer=setInterval(updateLobbyHint,500);
+}
+function updateLobbyHint(){
+  if(!currentLobby) return;
+  const hint=$('lobbyHint');
+  if(currentLobby.countdownAt){
+    hint.innerHTML=`🟢 Лобби заполнено! Старт через <b style="color:var(--accent);font-size:1.1em">${secsLeft(currentLobby.countdownAt)}</b> сек — выбор командиров…`;
+  }else{
+    hint.textContent=`Ждём игроков: ${currentLobby.count}/10. Как соберётся 10 — авто-старт через 10 секунд.`;
+  }
 }
 function renderChat(){
   const c=$('chat');
@@ -606,14 +595,6 @@ $('chatInput').addEventListener('keydown',e=>{ if(e.key==='Enter') sendChat(); }
 
 async function sit(side,idx){
   try{ await api('/api/lobbies/'+currentLobby.id+'/sit',{method:'POST',body:{side,idx}}); }
-  catch(err){ toast(err.message); }
-}
-async function toggleReady(){
-  try{ await api('/api/lobbies/'+currentLobby.id+'/ready',{method:'POST'}); }
-  catch(err){ toast(err.message); }
-}
-async function startProcess(){ // лобби -> голосование за командиров
-  try{ await api('/api/lobbies/'+currentLobby.id+'/start',{method:'POST'}); }
   catch(err){ toast(err.message); }
 }
 async function leaveLobby(){
@@ -650,8 +631,15 @@ function renderVote(){
       }).join('');
     $('vote'+(side==='alpha'?'Alpha':'Bravo')).innerHTML=html;
   });
-  $('voteHint').textContent = mySide ? '👑 Выбери командира своей команды' : 'Голосование идёт…';
+  updateVoteHint();
+  if(currentLobby.voteEndsAt) uiTimer=setInterval(updateVoteHint,500);
   $('voteStartBtn').style.display = (currentLobby.hostLc===meLc()) ? '' : 'none';
+}
+function updateVoteHint(){
+  if(!currentLobby || currentLobby.phase!=='vote') return;
+  const base = sideOfMe() ? '👑 Выбери командира своей команды' : 'Голосование идёт…';
+  const s = currentLobby.voteEndsAt ? secsLeft(currentLobby.voteEndsAt) : null;
+  $('voteHint').textContent = s!=null ? `${base} · ${s} сек` : base;
 }
 async function voteCommander(target){
   try{ await api('/api/lobbies/'+currentLobby.id+'/vote-commander',{method:'POST',body:{target}}); }
