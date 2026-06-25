@@ -1,138 +1,558 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Новый проект</title>
-  <style>
-    :root {
-      --bg: #0f1419; --surface: #1a2230; --border: #2a3545;
-      --text: #e7edf4; --text-dim: #8a98a8; --accent: #4f9cf9; --bad: #ff7a7a;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-      background: var(--bg); color: var(--text);
-      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-    }
-    .card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-      padding: 2rem; width: 100%; max-width: 360px;
-    }
-    h1 { margin: 0 0 0.25rem; font-size: 1.4rem; }
-    .sub { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 1.5rem; }
-    .tabs { display: flex; gap: 4px; background: var(--bg); border-radius: 10px; padding: 4px; margin-bottom: 1rem; }
-    .tabs button {
-      flex: 1; padding: 0.5rem; border: none; border-radius: 8px; cursor: pointer;
-      background: transparent; color: var(--text-dim); font-family: inherit; font-weight: 600;
-    }
-    .tabs button.active { background: var(--surface); color: var(--text); }
-    input {
-      width: 100%; padding: 0.7rem 0.9rem; margin-bottom: 0.75rem; border-radius: 10px;
-      border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit;
-    }
-    button.primary {
-      width: 100%; padding: 0.8rem; border: none; border-radius: 10px; cursor: pointer;
-      background: var(--accent); color: #06121f; font-weight: 700; font-family: inherit; font-size: 0.95rem;
-    }
-    .msg { font-size: 0.85rem; margin-top: 0.85rem; min-height: 1.2em; }
-    .msg.err { color: var(--bad); }
-    .me { display: none; }
-    .me pre {
-      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
-      padding: 0.85rem; overflow: auto; font-size: 0.8rem;
-    }
-    button.ghost {
-      width: 100%; padding: 0.7rem; margin-top: 0.5rem; border: 1px solid var(--border);
-      border-radius: 10px; cursor: pointer; background: transparent; color: var(--text-dim); font-family: inherit;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STANDOFF · FACEIT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#070a0f; --bg2:#0c1119; --panel:#10161f; --panel2:#161e2a;
+  --line:#222d3c; --line2:#2c3a4d;
+  --text:#eaf1f9; --dim:#8090a3; --dim2:#5b6878;
+  --accent:#ff8a1e; --accent2:#ffbd5e; --accentDim:#3a2912;
+  --alpha:#33c9ff; --alphaDim:#0d2c3a;
+  --bravo:#ff5147; --bravoDim:#3a1410;
+  --ok:#39d98a; --ban:#ff3b46;
+  --cut:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(1200px 700px at 80% -10%, rgba(255,138,30,.10), transparent 60%),
+    radial-gradient(1000px 600px at 0% 110%, rgba(51,201,255,.08), transparent 55%),
+    var(--bg);
+  color:var(--text); font-family:'Inter',system-ui,sans-serif;
+  min-height:100%; overflow-x:hidden;
+}
+body::before{ /* tactical grid */
+  content:''; position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.5;
+  background-image:
+    linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+  background-size:46px 46px; mask-image:radial-gradient(circle at 50% 40%, #000 30%, transparent 85%);
+}
+.mono,h1,h2,h3,.tac{font-family:'Rajdhani',sans-serif;letter-spacing:.04em}
+.app{position:relative;z-index:1;max-width:1240px;margin:0 auto;padding:0 1.2rem 4rem}
+
+/* angular cut card */
+.cut{clip-path:polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)))}
+
+/* ===== HEADER ===== */
+header{
+  display:flex;align-items:center;gap:1rem;height:68px;position:sticky;top:0;z-index:50;
+  background:linear-gradient(180deg, rgba(7,10,15,.96), rgba(7,10,15,.72));
+  backdrop-filter:blur(10px); border-bottom:1px solid var(--line); margin-bottom:1.6rem;
+}
+.brand{display:flex;align-items:center;gap:.7rem;font-family:'Rajdhani';font-weight:700;font-size:1.5rem;letter-spacing:.08em}
+.brand .logo{
+  width:38px;height:38px;display:grid;place-items:center;font-size:1.2rem;font-weight:800;color:#0a0a0a;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));clip-path:polygon(0 0,100% 0,100% 70%,70% 100%,0 100%);
+}
+.brand b{color:var(--accent)}
+.nav{display:flex;gap:.4rem;margin-left:1.5rem}
+.nav a{font-family:'Rajdhani';font-weight:600;font-size:1.02rem;color:var(--dim);text-decoration:none;padding:.4rem .8rem;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border-radius:6px}
+.nav a:hover{color:var(--text)}
+.nav a.on{color:var(--accent)}
+.spacer{flex:1}
+.profile{display:flex;align-items:center;gap:.7rem;padding:.35rem .35rem .35rem .9rem;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.profile .nick{font-family:'Rajdhani';font-weight:700;font-size:1.05rem;line-height:1}
+.profile .elo{font-size:.72rem;color:var(--accent);font-weight:700;letter-spacing:.03em}
+.profile .av{width:38px;height:38px;border-radius:8px;background:linear-gradient(135deg,#2a3547,#161e2a);display:grid;place-items:center;font-size:1.1rem}
+
+/* ===== SCREENS ===== */
+.screen{display:none;animation:fade .35s ease}
+.screen.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ===== MENU ===== */
+.hero{
+  position:relative;background:linear-gradient(120deg,var(--panel2),var(--panel));border:1px solid var(--line);
+  padding:2.4rem;margin-bottom:1.4rem;overflow:hidden;
+}
+.hero::after{content:'';position:absolute;right:-60px;top:-60px;width:340px;height:340px;background:radial-gradient(circle,rgba(255,138,30,.18),transparent 65%)}
+.hero .eyebrow{font-family:'Rajdhani';font-weight:700;letter-spacing:.22em;color:var(--accent);font-size:.85rem;text-transform:uppercase;margin-bottom:.6rem}
+.hero h1{font-size:3.2rem;font-weight:700;line-height:.95;text-transform:uppercase;margin-bottom:.4rem}
+.hero p{color:var(--dim);max-width:480px;margin-bottom:1.6rem;font-size:.95rem;line-height:1.5}
+.modes{display:flex;gap:.6rem;margin-bottom:1.6rem;flex-wrap:wrap}
+.mode{
+  padding:.7rem 1.1rem;background:var(--bg2);border:1px solid var(--line);cursor:pointer;
+  font-family:'Rajdhani';font-weight:600;letter-spacing:.05em;color:var(--dim);text-transform:uppercase;font-size:.92rem;
+  display:flex;align-items:center;gap:.5rem;
+}
+.mode:hover{border-color:var(--line2);color:var(--text)}
+.mode.on{border-color:var(--accent);color:var(--text);background:linear-gradient(180deg,var(--accentDim),var(--bg2))}
+.mode .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent)}
+.cta-row{display:flex;gap:.8rem;flex-wrap:wrap}
+.btn{
+  font-family:'Rajdhani';font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:1.05rem;
+  padding:1rem 2rem;border:none;cursor:pointer;color:#0a0a0a;position:relative;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:inline-flex;align-items:center;gap:.6rem;transition:transform .12s, box-shadow .12s;
+  box-shadow:0 6px 20px rgba(255,138,30,.25);
+}
+.btn:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(255,138,30,.4)}
+.btn:active{transform:translateY(0)}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line2);box-shadow:none}
+.btn.ghost:hover{border-color:var(--accent);color:var(--accent)}
+.btn.alpha{background:linear-gradient(135deg,var(--alpha),#7fe0ff);color:#03222e;box-shadow:0 6px 20px rgba(51,201,255,.25)}
+.btn[disabled]{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;margin-top:1.4rem}
+.stat{background:var(--panel);border:1px solid var(--line);padding:1rem 1.2rem}
+.stat .n{font-family:'Rajdhani';font-weight:700;font-size:1.8rem;color:var(--accent)}
+.stat .l{font-size:.74rem;color:var(--dim);text-transform:uppercase;letter-spacing:.1em}
+
+.section-title{font-family:'Rajdhani';font-weight:700;text-transform:uppercase;letter-spacing:.1em;font-size:1.1rem;margin:1.6rem 0 .9rem;display:flex;align-items:center;gap:.6rem}
+.section-title::before{content:'';width:4px;height:18px;background:var(--accent)}
+.lobby-list{display:grid;gap:.7rem}
+.lrow{display:flex;align-items:center;gap:1rem;background:var(--panel);border:1px solid var(--line);padding:.85rem 1.1rem;cursor:pointer;transition:border-color .15s,background .15s}
+.lrow:hover{border-color:var(--accent);background:var(--panel2)}
+.lrow .badge{font-family:'Rajdhani';font-weight:700;font-size:.8rem;padding:.25rem .6rem;background:var(--bg2);border:1px solid var(--line2);letter-spacing:.05em;color:var(--dim)}
+.lrow .lname{font-family:'Rajdhani';font-weight:700;font-size:1.15rem}
+.lrow .meta{font-size:.8rem;color:var(--dim)}
+.lrow .seats{margin-left:auto;font-family:'Rajdhani';font-weight:700;font-size:1.1rem}
+.lrow .seats b{color:var(--ok)}
+
+/* ===== LOBBY ===== */
+.lobby-grid{display:grid;grid-template-columns:1fr 360px;gap:1.2rem;align-items:start}
+.versus{display:grid;grid-template-columns:1fr 64px 1fr;gap:.8rem;align-items:start}
+.team{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);padding:1rem}
+.team.alpha{border-top:3px solid var(--alpha)}
+.team.bravo{border-top:3px solid var(--bravo)}
+.team-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem}
+.team-head .tn{font-family:'Rajdhani';font-weight:700;font-size:1.25rem;text-transform:uppercase;letter-spacing:.05em}
+.team.alpha .tn{color:var(--alpha)}
+.team.bravo .tn{color:var(--bravo)}
+.team-head .avg{font-size:.74rem;color:var(--dim);text-align:right}
+.team-head .avg b{display:block;font-family:'Rajdhani';font-size:1.05rem;color:var(--text)}
+.slot{display:flex;align-items:center;gap:.75rem;padding:.6rem .7rem;background:var(--bg2);border:1px solid var(--line);margin-bottom:.55rem;min-height:60px;transition:border-color .15s,transform .12s}
+.slot:last-child{margin-bottom:0}
+.slot.filled.you{border-color:var(--accent);background:linear-gradient(90deg,var(--accentDim),var(--bg2))}
+.slot.empty{border-style:dashed;cursor:pointer;color:var(--dim2);justify-content:center;font-family:'Rajdhani';font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.9rem}
+.slot.empty:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px)}
+.slot .pav{width:42px;height:42px;border-radius:7px;background:linear-gradient(135deg,#2c3850,#171f2c);display:grid;place-items:center;font-size:1.15rem;flex:none;position:relative}
+.slot .pav .cap{position:absolute;-bottom:-5px;bottom:-6px;right:-6px;width:18px;height:18px;background:var(--accent);color:#000;border-radius:50%;display:grid;place-items:center;font-size:.6rem;font-weight:800;border:2px solid var(--bg2)}
+.slot .pinfo{flex:1;min-width:0}
+.slot .pname{font-family:'Rajdhani';font-weight:700;font-size:1.05rem;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot .prank{font-size:.74rem;color:var(--dim);display:flex;align-items:center;gap:.35rem;margin-top:1px}
+.rank-dot{width:7px;height:7px;border-radius:2px;transform:rotate(45deg)}
+.slot .pelo{font-family:'Rajdhani';font-weight:700;font-size:1.05rem;color:var(--accent2);flex:none}
+.slot .rdy{flex:none;width:10px;height:10px;border-radius:50%;background:var(--line2)}
+.slot .rdy.on{background:var(--ok);box-shadow:0 0 10px var(--ok)}
+.vs-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;padding-top:3rem}
+.vs-mid .vs{font-family:'Rajdhani';font-weight:700;font-size:1.6rem;color:var(--dim);opacity:.6}
+.vs-mid .line{width:1px;flex:1;background:linear-gradient(var(--line),transparent)}
+
+/* side panel: chat */
+.side{background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;height:560px}
+.side-head{display:flex;align-items:center;justify-content:space-between;padding:.85rem 1rem;border-bottom:1px solid var(--line)}
+.side-head .t{font-family:'Rajdhani';font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.side-head .cnt{font-family:'Rajdhani';font-weight:700;font-size:.95rem;color:var(--dim)}
+.side-head .cnt b{color:var(--ok)}
+.chat{flex:1;overflow-y:auto;padding:.9rem 1rem;display:flex;flex-direction:column;gap:.65rem}
+.chat::-webkit-scrollbar{width:6px}.chat::-webkit-scrollbar-thumb{background:var(--line2)}
+.cmsg{font-size:.88rem;line-height:1.35}
+.cmsg .who{font-family:'Rajdhani';font-weight:700;margin-right:.4rem}
+.cmsg.sys{color:var(--dim);font-style:italic;font-size:.82rem}
+.cmsg.sys .who{color:var(--accent);font-style:normal}
+.chat-input{display:flex;gap:.5rem;padding:.7rem;border-top:1px solid var(--line)}
+.chat-input input{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--text);padding:.6rem .8rem;font-family:inherit;font-size:.9rem;outline:none}
+.chat-input input:focus{border-color:var(--accent)}
+.chat-input button{background:var(--accent);border:none;color:#000;padding:0 1rem;font-weight:700;cursor:pointer;font-family:'Rajdhani';font-size:1rem}
+.lobby-foot{display:flex;align-items:center;gap:.8rem;margin-top:1.2rem;flex-wrap:wrap}
+.lobby-foot .hint{color:var(--dim);font-size:.85rem}
+
+/* ===== VETO ===== */
+.veto-head{text-align:center;margin-bottom:1.6rem}
+.veto-head .phase{font-family:'Rajdhani';font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);font-size:.85rem}
+.veto-head h2{font-size:2.2rem;text-transform:uppercase;margin:.3rem 0}
+.turn-pill{display:inline-flex;align-items:center;gap:.6rem;padding:.5rem 1.1rem;border:1px solid var(--line2);font-family:'Rajdhani';font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.turn-pill.alpha{border-color:var(--alpha);color:var(--alpha);box-shadow:0 0 24px var(--alphaDim) inset}
+.turn-pill.bravo{border-color:var(--bravo);color:var(--bravo);box-shadow:0 0 24px var(--bravoDim) inset}
+.turn-pill .pulse{width:10px;height:10px;border-radius:50%;background:currentColor;animation:pulse 1.1s infinite}
+@keyframes pulse{0%,100%{opacity:.4;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+.maps{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:1.6rem}
+.mapc{position:relative;aspect-ratio:4/3;border:1px solid var(--line2);overflow:hidden;cursor:pointer;background-size:cover;background-position:center;transition:transform .15s,border-color .15s}
+.mapc:hover:not(.banned){transform:translateY(-4px);border-color:var(--accent)}
+.mapc .ov{position:absolute;inset:0;background:linear-gradient(180deg,rgba(7,10,15,.05),rgba(7,10,15,.92))}
+.mapc .nm{position:absolute;left:0;right:0;bottom:0;padding:.7rem .9rem;font-family:'Rajdhani';font-weight:700;font-size:1.25rem;text-transform:uppercase;letter-spacing:.04em;z-index:2}
+.mapc .nm small{display:block;font-size:.68rem;letter-spacing:.14em;color:var(--dim);font-weight:600}
+.mapc .pending{position:absolute;top:.6rem;left:.7rem;z-index:2;font-size:.62rem;letter-spacing:.12em;color:var(--dim2);text-transform:uppercase;border:1px dashed var(--line2);padding:.15rem .4rem}
+.mapc.banned{cursor:default;filter:grayscale(1) brightness(.4)}
+.mapc.banned .ban-x{position:absolute;inset:0;display:grid;place-items:center;z-index:3;animation:stamp .3s ease}
+.mapc.banned .ban-x span{font-family:'Rajdhani';font-weight:700;color:var(--ban);border:3px solid var(--ban);padding:.2rem .8rem;font-size:1.1rem;letter-spacing:.1em;transform:rotate(-9deg);text-transform:uppercase}
+.mapc.banned .by{position:absolute;top:.5rem;right:.5rem;z-index:3;font-size:.64rem;font-family:'Rajdhani';font-weight:700;letter-spacing:.08em;padding:.1rem .45rem}
+.by.alpha{color:var(--alpha);border:1px solid var(--alpha)}
+.by.bravo{color:var(--bravo);border:1px solid var(--bravo)}
+.mapc.picked{border:2px solid var(--ok);box-shadow:0 0 0 4px rgba(57,217,138,.15),0 0 40px rgba(57,217,138,.3);transform:none;cursor:default}
+.mapc.picked .pick-tag{position:absolute;top:0;left:0;right:0;z-index:3;background:var(--ok);color:#04130c;font-family:'Rajdhani';font-weight:700;text-align:center;padding:.35rem;letter-spacing:.16em;text-transform:uppercase;font-size:.82rem}
+@keyframes stamp{from{transform:scale(2);opacity:0}to{transform:scale(1);opacity:1}}
+.veto-foot{text-align:center;margin-top:1.8rem}
+
+/* match modal */
+.modal{position:fixed;inset:0;z-index:100;display:none;place-items:center;background:rgba(4,6,10,.86);backdrop-filter:blur(6px);animation:fade .3s}
+.modal.show{display:grid}
+.mcard{width:min(520px,92vw);background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--ok);text-align:center;padding:2.4rem 2rem;position:relative;overflow:hidden}
+.mcard::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(57,217,138,.18),transparent 60%)}
+.mcard .big{font-family:'Rajdhani';font-weight:700;font-size:2.4rem;text-transform:uppercase;color:var(--ok);position:relative}
+.mcard .mapname{font-family:'Rajdhani';font-weight:700;font-size:1.6rem;margin:.4rem 0 .2rem;position:relative}
+.mcard p{color:var(--dim);margin-bottom:1.6rem;position:relative}
+.mcard .btn{position:relative}
+
+@media(max-width:900px){
+  .lobby-grid{grid-template-columns:1fr}
+  .versus{grid-template-columns:1fr;gap:1rem}
+  .vs-mid{flex-direction:row;padding:0}
+  .vs-mid .line{height:1px;width:auto}
+  .maps{grid-template-columns:repeat(2,1fr)}
+  .stat-row{grid-template-columns:repeat(2,1fr)}
+  .hero h1{font-size:2.3rem}
+  .nav{display:none}
+  .side{height:420px}
+}
+</style>
 </head>
 <body>
-  <div class="card">
-    <h1>🚧 Новый проект</h1>
-    <div class="sub">Чистый каркас: Express + PostgreSQL + JWT. Авторизация работает — строй дальше.</div>
 
-    <div id="authView">
-      <div class="tabs">
-        <button id="tabLogin" class="active" onclick="setMode('login')">Вход</button>
-        <button id="tabRegister" onclick="setMode('register')">Регистрация</button>
+<header>
+  <div class="app" style="display:flex;align-items:center;gap:1rem;width:100%;padding-bottom:0">
+    <div class="brand"><span class="logo">S</span>STAND<b>OFF</b></div>
+    <nav class="nav">
+      <a class="on" data-go="menu">Играть</a>
+      <a data-go="lobby">Лобби</a>
+      <a>Рейтинг</a>
+      <a>Статистика</a>
+    </nav>
+    <div class="spacer"></div>
+    <div class="profile">
+      <div>
+        <div class="nick" id="meNick">Player</div>
+        <div class="elo">⭐ <span id="meElo">2380</span> ELO</div>
       </div>
-      <form id="authForm">
-        <input id="username" placeholder="Имя пользователя" autocomplete="username">
-        <input id="password" type="password" placeholder="Пароль" autocomplete="current-password">
-        <button class="primary" type="submit" id="submitBtn">Войти</button>
-      </form>
-      <div class="msg" id="msg"></div>
-    </div>
-
-    <div class="me" id="meView">
-      <div class="sub">Ты вошёл. Ответ <code>/api/me</code>:</div>
-      <pre id="meData"></pre>
-      <button class="ghost" onclick="logout()">Выйти</button>
+      <div class="av">🎯</div>
     </div>
   </div>
+</header>
 
-  <script>
-    let mode = 'login';
+<div class="app">
 
-    function setMode(m) {
-      mode = m;
-      document.getElementById('tabLogin').classList.toggle('active', m === 'login');
-      document.getElementById('tabRegister').classList.toggle('active', m === 'register');
-      document.getElementById('submitBtn').textContent = m === 'login' ? 'Войти' : 'Создать аккаунт';
-      setMsg('');
+  <!-- ===== MENU ===== -->
+  <section class="screen active" id="screen-menu">
+    <div class="hero cut">
+      <div class="eyebrow">Competitive · 5 vs 5</div>
+      <h1>Готов к бою?</h1>
+      <p>Собери команду в лобби, забань неудобные карты и врывайся в матч. Честный матчмейкинг по ELO — никаких смурфов.</p>
+      <div class="modes">
+        <div class="mode on"><span class="dot"></span>Рейтинг 5×5</div>
+        <div class="mode">Дружеский</div>
+        <div class="mode">Турнир</div>
+      </div>
+      <div class="cta-row">
+        <button class="btn" onclick="openLobby()">⚔ Создать лобби</button>
+        <button class="btn ghost" onclick="go('lobby')">Найти матч</button>
+      </div>
+      <div class="stat-row">
+        <div class="stat cut"><div class="n">1 248</div><div class="l">Онлайн</div></div>
+        <div class="stat cut"><div class="n">86</div><div class="l">Лобби сейчас</div></div>
+        <div class="stat cut"><div class="n">7</div><div class="l">Карт в пуле</div></div>
+        <div class="stat cut"><div class="n">~40с</div><div class="l">Поиск</div></div>
+      </div>
+    </div>
+
+    <div class="section-title">Открытые лобби</div>
+    <div class="lobby-list" id="lobbyList"></div>
+  </section>
+
+  <!-- ===== LOBBY ===== -->
+  <section class="screen" id="screen-lobby">
+    <div class="section-title" style="justify-content:space-between">
+      <span style="display:flex;align-items:center;gap:.6rem"><span style="width:4px;height:18px;background:var(--accent);display:inline-block"></span>Лобби · Рейтинг 5×5</span>
+      <span style="font-size:.85rem;color:var(--dim);font-family:'Inter'">ID: #STX-4821</span>
+    </div>
+    <div class="lobby-grid">
+      <div class="versus">
+        <div class="team alpha cut" id="teamAlpha"></div>
+        <div class="vs-mid"><div class="line"></div><div class="vs">VS</div><div class="line"></div></div>
+        <div class="team bravo cut" id="teamBravo"></div>
+      </div>
+      <div class="side cut">
+        <div class="side-head">
+          <span class="t">💬 Чат лобби</span>
+          <span class="cnt"><b id="seatCount">0</b>/10 мест</span>
+        </div>
+        <div class="chat" id="chat"></div>
+        <div class="chat-input">
+          <input id="chatInput" placeholder="Написать команде…" maxlength="200" autocomplete="off">
+          <button onclick="sendChat()">▶</button>
+        </div>
+      </div>
+    </div>
+    <div class="lobby-foot">
+      <button class="btn" id="readyBtn" onclick="toggleReady()">✓ Я готов</button>
+      <button class="btn alpha" id="startBtn" onclick="startVeto()">Начать бан карт →</button>
+      <button class="btn ghost" onclick="go('menu')">← Выйти</button>
+      <span class="hint" id="lobbyHint">Когда все 10 готовы — начинается бан карт.</span>
+    </div>
+  </section>
+
+  <!-- ===== VETO ===== -->
+  <section class="screen" id="screen-veto">
+    <div class="veto-head">
+      <div class="phase">Фаза вето · BO1</div>
+      <h2>Бан карт</h2>
+      <div class="turn-pill alpha" id="turnPill"><span class="pulse"></span><span id="turnText">Ход: Team Alpha</span></div>
+    </div>
+    <div class="maps" id="maps"></div>
+    <div class="veto-foot">
+      <button class="btn ghost" onclick="resetVeto()">↺ Сбросить</button>
+      <span class="hint" style="margin-left:1rem;color:var(--dim)">Команды банят по очереди. Последняя оставшаяся карта — игровая.</span>
+    </div>
+  </section>
+
+</div>
+
+<!-- match found modal -->
+<div class="modal" id="matchModal">
+  <div class="mcard cut">
+    <div class="big">Матч найден</div>
+    <div class="mapname" id="finalMap">—</div>
+    <p>Карта выбрана. Сервер запускается — подключайтесь к игре.</p>
+    <button class="btn" onclick="closeMatch()">🎮 Войти в игру</button>
+  </div>
+</div>
+
+<script>
+/* ===========================================================
+   КАРТЫ STANDOFF 2 — изображения подставишь позже.
+   Просто впиши URL в поле img (например '/uploads/sandstone.jpg').
+   Пока пусто — рисуется градиент-плейсхолдер.
+   =========================================================== */
+const MAPS = [
+  { id:'sandstone', name:'Sandstone', sub:'Classic',   img:'', grad:'linear-gradient(135deg,#5a4326,#2a1f12)' },
+  { id:'rust',      name:'Rust',      sub:'Industrial', img:'', grad:'linear-gradient(135deg,#6b3b22,#2e1810)' },
+  { id:'province',  name:'Province',  sub:'Town',       img:'', grad:'linear-gradient(135deg,#3a4a2c,#18230f)' },
+  { id:'zone7',     name:'Zone 7',    sub:'Bunker',     img:'', grad:'linear-gradient(135deg,#2c3a4a,#101a26)' },
+  { id:'sakura',    name:'Sakura',    sub:'Temple',     img:'', grad:'linear-gradient(135deg,#5a2c44,#26101c)' },
+  { id:'breeze',    name:'Breeze',    sub:'Coast',      img:'', grad:'linear-gradient(135deg,#1f5560,#0c2226)' },
+  { id:'dune',      name:'Dune',      sub:'Desert',     img:'', grad:'linear-gradient(135deg,#7a5a2a,#332512)' },
+];
+
+const RANKS = {
+  legend:{label:'Legendary', c:'#ff8a1e'},
+  master:{label:'Master',    c:'#ff5147'},
+  elite: {label:'Elite',     c:'#a06bff'},
+  expert:{label:'Expert',    c:'#33c9ff'},
+  pro:   {label:'Pro',       c:'#39d98a'},
+};
+const r = (k)=>RANKS[k];
+
+// мок-состав лобби (10 мест: 5 Alpha + 5 Bravo). null = пустое место.
+const state = {
+  seats:{
+    alpha:[
+      {name:'You',     elo:2380, rank:'legend', av:'🎯', you:true, captain:true, ready:false},
+      {name:'Sw1ftZ',  elo:2210, rank:'master', av:'🐺', ready:true},
+      {name:'N0vaK',   elo:1980, rank:'elite',  av:'⚡', ready:true},
+      null, null,
+    ],
+    bravo:[
+      {name:'D4rkLynx',elo:2305, rank:'legend', av:'🦊', captain:true, ready:true},
+      {name:'Rampage', elo:2090, rank:'master', av:'🔥', ready:true},
+      {name:'Gh0st',   elo:1875, rank:'expert', av:'👻', ready:false},
+      {name:'Volt',    elo:1760, rank:'pro',    av:'🎮', ready:true},
+      null,
+    ],
+  },
+  chat:[
+    {who:'Система', sys:true, text:'Лобби создано. Ждём 10 игроков.'},
+    {who:'Sw1ftZ',  text:'го на сэндстоун'},
+    {who:'D4rkLynx',text:'rust банить будем'},
+  ],
+  maps:[], turn:'alpha', picked:null,
+};
+
+/* ---------- routing ---------- */
+function go(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  document.querySelectorAll('.nav a[data-go]').forEach(a=>a.classList.toggle('on', a.dataset.go===name));
+  window.scrollTo({top:0,behavior:'smooth'});
+  if(name==='lobby') renderLobby();
+  if(name==='menu')  renderMenu();
+}
+document.querySelectorAll('.nav a[data-go]').forEach(a=>a.addEventListener('click',()=>go(a.dataset.go)));
+function openLobby(){ go('lobby'); }
+
+/* ---------- menu ---------- */
+const OPEN_LOBBIES = [
+  {name:'EU · Tryhard only', rank:'Master+', mode:'Рейтинг', filled:8},
+  {name:'Чилл катка', rank:'Любой', mode:'Дружеский', filled:5},
+  {name:'Sakura mains', rank:'Elite+', mode:'Рейтинг', filled:9},
+  {name:'Новички welcome', rank:'Pro', mode:'Дружеский', filled:3},
+];
+function renderMenu(){
+  document.getElementById('lobbyList').innerHTML = OPEN_LOBBIES.map(l=>`
+    <div class="lrow cut" onclick="openLobby()">
+      <span class="badge">${l.mode}</span>
+      <div>
+        <div class="lname">${l.name}</div>
+        <div class="meta">Ранг: ${l.rank}</div>
+      </div>
+      <div class="seats"><b>${l.filled}</b>/10</div>
+      <button class="btn" style="padding:.6rem 1.2rem;font-size:.9rem">Войти</button>
+    </div>`).join('');
+}
+
+/* ---------- lobby ---------- */
+function slotHTML(p, side, idx){
+  if(!p) return `<div class="slot empty" onclick="sit('${side}',${idx})">+ Свободно</div>`;
+  const rk=r(p.rank);
+  return `<div class="slot filled ${p.you?'you':''}">
+    <div class="pav">${p.av||'🪖'}${p.captain?'<span class="cap">★</span>':''}</div>
+    <div class="pinfo">
+      <div class="pname">${p.name}</div>
+      <div class="prank"><span class="rank-dot" style="background:${rk.c}"></span>${rk.label}</div>
+    </div>
+    <div class="pelo">${p.elo}</div>
+    <div class="rdy ${p.ready?'on':''}" title="${p.ready?'Готов':'Не готов'}"></div>
+  </div>`;
+}
+function teamHTML(side){
+  const arr=state.seats[side];
+  const filled=arr.filter(Boolean);
+  const avg=filled.length?Math.round(filled.reduce((s,p)=>s+p.elo,0)/filled.length):0;
+  const name=side==='alpha'?'Team Alpha':'Team Bravo';
+  return `<div class="team-head">
+      <div class="tn">${name}</div>
+      <div class="avg">Средний ELO<b>${avg||'—'}</b></div>
+    </div>${arr.map((p,i)=>slotHTML(p,side,i)).join('')}`;
+}
+function renderLobby(){
+  document.getElementById('teamAlpha').innerHTML=teamHTML('alpha');
+  document.getElementById('teamBravo').innerHTML=teamHTML('bravo');
+  const count=[...state.seats.alpha,...state.seats.bravo].filter(Boolean).length;
+  document.getElementById('seatCount').textContent=count;
+  const me=state.seats.alpha.find(p=>p&&p.you);
+  document.getElementById('readyBtn').textContent = me&&me.ready ? '✓ Готов' : '✓ Я готов';
+  document.getElementById('readyBtn').classList.toggle('alpha', !!(me&&me.ready));
+  const allReady = count===10 && [...state.seats.alpha,...state.seats.bravo].filter(Boolean).every(p=>p.ready);
+  const startBtn=document.getElementById('startBtn');
+  startBtn.disabled=false; // для демо всегда доступно
+  document.getElementById('lobbyHint').textContent = allReady
+    ? 'Все готовы! Можно начинать бан карт.'
+    : `Готовы ${[...state.seats.alpha,...state.seats.bravo].filter(p=>p&&p.ready).length}/${count}. Жмите «Начать», когда соберётесь.`;
+  renderChat();
+}
+function sit(side,idx){
+  // пересадить себя на пустое место
+  for(const s of ['alpha','bravo']){
+    const k=state.seats[s].findIndex(p=>p&&p.you);
+    if(k>-1){ const me=state.seats[s][k]; state.seats[s][k]=null; state.seats[side][idx]=me; }
+  }
+  renderLobby();
+  addSys(`Вы заняли место в команде ${side==='alpha'?'Alpha':'Bravo'}.`);
+}
+function toggleReady(){
+  const me=[...state.seats.alpha,...state.seats.bravo].find(p=>p&&p.you);
+  if(me){ me.ready=!me.ready; renderLobby(); addSys(me.ready?'Вы готовы.':'Вы отменили готовность.'); }
+}
+
+/* ---------- chat ---------- */
+function renderChat(){
+  const c=document.getElementById('chat');
+  c.innerHTML=state.chat.map(m=>m.sys
+    ? `<div class="cmsg sys"><span class="who">${m.who}</span>${m.text}</div>`
+    : `<div class="cmsg"><span class="who" style="color:${pickColor(m.who)}">${m.who}:</span>${escapeHtml(m.text)}</div>`
+  ).join('');
+  c.scrollTop=c.scrollHeight;
+}
+function addSys(text){ state.chat.push({who:'Система',sys:true,text}); renderChat(); }
+function sendChat(){
+  const inp=document.getElementById('chatInput');
+  const t=inp.value.trim(); if(!t) return;
+  state.chat.push({who:'You',text:t}); inp.value=''; renderChat();
+}
+document.getElementById('chatInput').addEventListener('keydown',e=>{ if(e.key==='Enter') sendChat(); });
+function pickColor(name){
+  const colors=['#ff8a1e','#33c9ff','#39d98a','#ff5147','#a06bff','#ffbd5e'];
+  let h=0; for(const ch of name) h=(h*31+ch.charCodeAt(0))>>>0;
+  return colors[h%colors.length];
+}
+function escapeHtml(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+/* ---------- veto ---------- */
+function startVeto(){
+  state.maps=MAPS.map(m=>({...m, banned:false, by:null}));
+  state.turn='alpha'; state.picked=null;
+  go('veto'); renderVeto();
+}
+function renderVeto(){
+  const wrap=document.getElementById('maps');
+  wrap.innerHTML=state.maps.map((m,i)=>{
+    const bg=m.img?`background-image:url('${m.img}')`:`background-image:${m.grad}`;
+    let inner=`<div class="ov"></div>
+      ${m.img?'':'<span class="pending">img позже</span>'}
+      <div class="nm"><small>${m.sub}</small>${m.name}</div>`;
+    let cls='mapc cut';
+    if(m===state.picked){ cls+=' picked'; inner=`<div class="pick-tag">Карта матча</div>`+inner; }
+    else if(m.banned){ cls+=' banned';
+      inner+=`<div class="by ${m.by}">${m.by==='alpha'?'ALPHA':'BRAVO'}</div>
+              <div class="ban-x"><span>Ban</span></div>`;
     }
+    return `<div class="${cls}" style="${bg}" onclick="banMap(${i})">${inner}</div>`;
+  }).join('');
+  const pill=document.getElementById('turnPill');
+  if(state.picked){
+    pill.className='turn-pill'; document.getElementById('turnText').textContent='Готово';
+    pill.querySelector('.pulse').style.display='none';
+  }else{
+    pill.className='turn-pill '+state.turn;
+    pill.querySelector('.pulse').style.display='';
+    document.getElementById('turnText').textContent = 'Ход: '+(state.turn==='alpha'?'Team Alpha':'Team Bravo');
+  }
+}
+function banMap(i){
+  const m=state.maps[i];
+  if(m.banned||state.picked) return;
+  m.banned=true; m.by=state.turn;
+  addSys(`${state.turn==='alpha'?'Team Alpha':'Team Bravo'} забанила карту ${m.name}.`);
+  const left=state.maps.filter(x=>!x.banned);
+  if(left.length===1){
+    state.picked=left[0];
+    renderVeto();
+    setTimeout(()=>showMatch(left[0]),700);
+    return;
+  }
+  state.turn = state.turn==='alpha'?'bravo':'alpha';
+  renderVeto();
+}
+function resetVeto(){ startVeto(); }
 
-    function setMsg(text, isErr) {
-      const el = document.getElementById('msg');
-      el.textContent = text;
-      el.className = 'msg' + (isErr ? ' err' : '');
-    }
+/* ---------- match modal ---------- */
+function showMatch(m){
+  document.getElementById('finalMap').textContent=m.name.toUpperCase();
+  document.getElementById('matchModal').classList.add('show');
+}
+function closeMatch(){ document.getElementById('matchModal').classList.remove('show'); }
 
-    async function api(path, opts = {}) {
-      const headers = { 'Content-Type': 'application/json' };
-      const token = localStorage.getItem('token');
-      if (token) headers.Authorization = 'Bearer ' + token;
-      const res = await fetch(path, { ...opts, headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Ошибка');
-      return data;
-    }
-
-    document.getElementById('authForm').addEventListener('submit', async e => {
-      e.preventDefault();
-      const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value;
-      try {
-        const r = await api('/api/' + mode, { method: 'POST', body: { username, password } });
-        localStorage.setItem('token', r.token);
-        showMe();
-      } catch (err) {
-        setMsg(err.message, true);
+/* ---------- init: подтянуть ник из auth-скелета, если залогинен ---------- */
+(async ()=>{
+  try{
+    const token=localStorage.getItem('token');
+    if(token){
+      const res=await fetch('/api/me',{headers:{Authorization:'Bearer '+token}});
+      if(res.ok){ const me=await res.json();
+        document.getElementById('meNick').textContent=me.username;
+        const self=state.seats.alpha.find(p=>p&&p.you); if(self) self.name=me.username;
       }
-    });
-
-    async function showMe() {
-      try {
-        const me = await api('/api/me');
-        document.getElementById('authView').style.display = 'none';
-        document.getElementById('meView').style.display = 'block';
-        document.getElementById('meData').textContent = JSON.stringify(me, null, 2);
-      } catch (err) {
-        logout();
-      }
     }
-
-    function logout() {
-      localStorage.removeItem('token');
-      document.getElementById('meView').style.display = 'none';
-      document.getElementById('authView').style.display = 'block';
-      document.getElementById('password').value = '';
-      setMsg('');
-    }
-
-    if (localStorage.getItem('token')) showMe();
-  </script>
+  }catch(e){}
+  renderMenu();
+})();
+</script>
 </body>
 </html>
