@@ -71,8 +71,9 @@ async function initDb() {
       created_at BIGINT NOT NULL
     );
   `);
-  // Рейтинг игрока для матчмейкинга (ELO). Ранг вычисляется из него.
-  try { await pool.query("ALTER TABLE users ADD COLUMN elo INTEGER DEFAULT 1000"); } catch (e) {}
+  // Рейтинг игрока для матчмейкинга (ELO). Ранг вычисляется из него. Новые игроки — с 0.
+  try { await pool.query("ALTER TABLE users ADD COLUMN elo INTEGER DEFAULT 0"); } catch (e) {}
+  try { await pool.query("ALTER TABLE users ALTER COLUMN elo SET DEFAULT 0"); } catch (e) {}
   // Игровой ник и ID из Standoff 2 — показываются другим игрокам в лобби.
   try { await pool.query("ALTER TABLE users ADD COLUMN game_nick TEXT"); } catch (e) {}
   try { await pool.query("ALTER TABLE users ADD COLUMN game_id TEXT"); } catch (e) {}
@@ -202,7 +203,7 @@ app.post('/api/register', async (req, res) => {
 
     const hash = await bcrypt.hash(password, 10);
     await run(
-      'INSERT INTO users (username, password_hash, created_at, game_nick, game_id) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO users (username, password_hash, created_at, game_nick, game_id, elo) VALUES (?, ?, ?, ?, ?, 0)',
       username, hash, Date.now(), gnick, gid
     );
 
@@ -234,7 +235,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.get('/api/me', authMiddleware, async (req, res) => {
-  const u = await one('SELECT username, avatar, is_admin, is_verified, created_at, COALESCE(elo, 1000)::int as elo, game_nick, game_id FROM users WHERE username = ?', req.user.username);
+  const u = await one('SELECT username, avatar, is_admin, is_verified, created_at, COALESCE(elo, 0)::int as elo, game_nick, game_id FROM users WHERE username = ?', req.user.username);
   if (!u) return res.status(404).json({ error: 'User not found' });
   res.json(u);
 });
@@ -243,12 +244,12 @@ app.get('/api/me', authMiddleware, async (req, res) => {
 // Таблица лидеров по ELO (+ позиция запросившего, если залогинен).
 app.get('/api/leaderboard', optionalAuth, async (req, res) => {
   try {
-    const rows = await all('SELECT username, game_nick, COALESCE(elo, 1000)::int as elo FROM users ORDER BY COALESCE(elo, 1000) DESC, created_at ASC LIMIT 12');
+    const rows = await all('SELECT username, game_nick, COALESCE(elo, 0)::int as elo FROM users ORDER BY COALESCE(elo, 0) DESC, created_at ASC LIMIT 12');
     const total = (await one('SELECT COUNT(*)::int as c FROM users')).c;
     let youPos = null;
     if (req.user) {
-      const me = await one('SELECT COALESCE(elo, 1000)::int as elo FROM users WHERE username = ?', req.user.username);
-      if (me) youPos = (await one('SELECT COUNT(*)::int as c FROM users WHERE COALESCE(elo, 1000) > ?', me.elo)).c + 1;
+      const me = await one('SELECT COALESCE(elo, 0)::int as elo FROM users WHERE username = ?', req.user.username);
+      if (me) youPos = (await one('SELECT COUNT(*)::int as c FROM users WHERE COALESCE(elo, 0) > ?', me.elo)).c + 1;
     }
     res.json({
       total, youPos,
@@ -295,7 +296,7 @@ function rankFromElo(elo) {
 function newId(prefix) { return prefix + Date.now().toString(36) + crypto.randomBytes(3).toString('hex'); }
 
 async function playerCard(usernameLc) {
-  const u = await one('SELECT username, avatar, COALESCE(elo, 1000)::int as elo, game_nick, game_id FROM users WHERE LOWER(username) = LOWER(?)', usernameLc);
+  const u = await one('SELECT username, avatar, COALESCE(elo, 0)::int as elo, game_nick, game_id FROM users WHERE LOWER(username) = LOWER(?)', usernameLc);
   if (!u) return null;
   const rk = rankFromElo(u.elo);
   return {

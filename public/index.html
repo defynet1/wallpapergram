@@ -625,7 +625,7 @@ function renderLiveWidget(list){
 }
 function renderProfileWidget(){
   const el=$('profileWidget'); if(!el||!currentUser) return;
-  const elo=currentUser.elo||1000;
+  const elo=currentUser.elo ?? 0;
   const t=rankTier(elo), nx=nextTier(elo);
   const prog=nx?Math.max(4,Math.round((elo-t.min)/(nx.min-t.min)*100)):100;
   const av=currentUser.avatar?`style="background-image:url('${currentUser.avatar}')"`:'';
