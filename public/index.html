@@ -209,6 +209,16 @@ input.fld:focus{border-color:var(--accent)}
 
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ban);color:#fff;font-weight:600;padding:.6rem 1.1rem;border-radius:8px;z-index:200;opacity:0;transition:opacity .25s;pointer-events:none;font-size:.9rem;box-shadow:0 6px 24px rgba(0,0,0,.4)}
 
+/* ===== TOP BANNER ===== */
+/* Положи свою картинку в public/banner.jpg — она появится автоматически.
+   Пока файла нет — показывается градиент-заглушка (без «битой» иконки). */
+.topbanner{
+  width:100%; aspect-ratio:1100/300; max-height:240px; margin-bottom:1.4rem;
+  background-image:url('/banner.jpg'), linear-gradient(115deg,#2a1d05,#0c0f16 55%,#3a2708);
+  background-size:cover, cover; background-position:center; background-repeat:no-repeat;
+  border:1px solid var(--line2); box-shadow:0 10px 34px rgba(0,0,0,.45);
+}
+
 /* ===== DASHBOARD / WIDGETS ===== */
 :root{ --m1:#34d0ff; --m2:#a374ff; --m5:#ff9a32; --gold:#ffd24a; --good2:#46e08a; }
 .dash{display:grid;grid-template-columns:1fr 340px;gap:1.2rem;align-items:start;margin-top:1.4rem}
@@ -337,6 +347,7 @@ input.fld:focus{border-color:var(--accent)}
 
   <!-- ===== MENU (dashboard) ===== -->
   <section class="screen" id="screen-menu">
+    <div class="topbanner cut" role="img" aria-label="Cyber Faceit"></div>
     <div class="hero cut">
       <div class="eyebrow">Standoff 2 · Competitive</div>
       <h1>Готов к бою?</h1>
